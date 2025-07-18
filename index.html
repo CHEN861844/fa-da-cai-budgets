@@ -1,9 +1,37 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>發大財記帳 + 小新互動</title>
+
+  <!-- Firebase v9 模組化 引入 -->
+  <script type="module">
+    // 從 CDN 載入 Firebase v9 ESM 模組
+    import { initializeApp }       from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getAnalytics }        from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+    import { getFirestore }        from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    // 你的 Firebase config（直接從 Console 拷貝貼上）
+    const firebaseConfig = {
+      apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
+      authDomain: "fa-da-cai-budgets.firebaseapp.com",
+      projectId: "fa-da-cai-budgets",
+      storageBucket: "fa-da-cai-budgets.firebasestorage.app",
+      messagingSenderId: "775217187438",
+      appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
+      measurementId: "G-DZME3R8WF7"
+    };
+
+    // 初始化 Firebase App / Analytics / Firestore
+    const app       = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db        = getFirestore(app);
+
+    // 暴露到全局，方便後續改寫 CRUD 邏輯時使用
+    window.db = db;
+  </script>
+
   <style>
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body { margin: 0; padding: 1rem; background: url('bg.jpg') no-repeat center center fixed; background-size: cover; overflow-x: hidden; color: #333; }
@@ -120,8 +148,10 @@
     <div id="month-overview-cards" style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:flex-start;"></div>
   </div>
   <div id="monthly-records" class="monthly-records"></div>
+
   <img id="shin-icon" src="1.png" alt="小新浮動">
   <div id="shin-dialog">小新提醒：今天有記帳嗎？</div>
+
   <script>
     const pics = ['1.png','2.png','3.png','4.png','5.jpg','6.jpg'];
     const messages = [
@@ -167,21 +197,16 @@
       document.getElementById('add-category-row').style.display = '';
       document.getElementById('delete-category-row').style.display = 'none';
     }
-    function hideAddCategory() {
-      document.getElementById('add-category-row').style.display = 'none';
-      document.getElementById('new-category-name').value = '';
-    }
+    function hideAddCategory() { document.getElementById('add-category-row').style.display = 'none'; document.getElementById('new-category-name').value = ''; }
     function addCategory() {
       const n = document.getElementById('new-category-name').value.trim();
       const type = document.getElementById('record-type').value;
       if (n) {
         if (type === 'income' && !customIncomeCategories.includes(n)) customIncomeCategories.push(n);
-        if (type === 'expense' && !customExpenseCategories.includes(n)) customExpenseCategories.push(n);
-        renderCategorySelect();
-        document.getElementById('record-category').value = n;
+        if (type === 'expense'&& !customExpenseCategories.includes(n)) customExpenseCategories.push(n);
+        renderCategorySelect(); document.getElementById('record-category').value = n;
       }
-      hideAddCategory();
-      checkCardDetailForm();
+      hideAddCategory(); checkCardDetailForm();
     }
 
     function showDeleteCategory() {
@@ -196,32 +221,29 @@
       const type = document.getElementById('record-type').value;
       const c = document.getElementById('del-category-select').value;
       if (!confirm(`確定要從選單移除「${c}」這個分類嗎？`)) return;
-      if (type === 'income') {
+      if (type==='income') {
         hiddenIncomeCategories.push(c);
-        customIncomeCategories = customIncomeCategories.filter(v => v !== c);
+        customIncomeCategories = customIncomeCategories.filter(v=>v!==c);
       } else {
         hiddenExpenseCategories.push(c);
-        customExpenseCategories = customExpenseCategories.filter(v => v !== c);
+        customExpenseCategories = customExpenseCategories.filter(v=>v!==c);
       }
-      renderCategorySelect();
-      hideDeleteCategory();
+      renderCategorySelect(); hideDeleteCategory();
     }
-    function hideDeleteCategory() {
-      document.getElementById('delete-category-row').style.display = 'none';
-    }
+    function hideDeleteCategory(){ document.getElementById('delete-category-row').style.display='none'; }
 
-    function checkCardDetailForm() {
+    function checkCardDetailForm(){
       const type = document.getElementById('record-type').value;
-      const cat = document.getElementById('record-category').value.trim();
+      const cat  = document.getElementById('record-category').value.trim();
       document.getElementById('card-details-form').style.display =
-        (type === 'expense' && cat === '卡費') ? '' : 'none';
+        (type==='expense'&&cat==='卡費')?'':'none';
     }
 
-    function addCardDetailRow(name = '', amount = '') {
+    function addCardDetailRow(name='',amount=''){
       const ctr = document.getElementById('card-details-rows');
       const row = document.createElement('div');
-      row.className = 'detail-row';
-      row.innerHTML = `
+      row.className='detail-row';
+      row.innerHTML=`
         <input type="text" placeholder="名稱" value="${name}">
         <input type="number" placeholder="金額" value="${amount}">
         <button class="icon-btn" onclick="this.parentNode.remove()">🗑️</button>
@@ -229,33 +251,31 @@
       ctr.appendChild(row);
     }
 
-    document.getElementById('record-type').addEventListener('change', renderCategorySelect);
-    document.getElementById('record-category').addEventListener('change', checkCardDetailForm);
+    document.getElementById('record-type').addEventListener('change',renderCategorySelect);
+    document.getElementById('record-category').addEventListener('change',checkCardDetailForm);
 
-    function addRecord() {
+    function addRecord(){
       const m = document.getElementById('record-month').value;
       const t = document.getElementById('record-type').value;
       const c = document.getElementById('record-category').value.trim();
       const a = Math.abs(parseFloat(document.getElementById('record-amount').value));
-      if (!m || !c || (isNaN(a) && !(t === 'expense' && c === '卡費'))) {
-        alert('請填寫所有欄位');
-        return;
+      if(!m||!c||(isNaN(a)&&!(t==='expense'&&c==='卡費'))){
+        alert('請填寫所有欄位');return;
       }
-      if (!records[m]) records[m] = [];
-      if (t === 'expense' && c === '卡費' &&
-          document.getElementById('card-details-form').style.display !== 'none') {
+      if(!records[m]) records[m]=[];
+      if(t==='expense'&&c==='卡費'&&document.getElementById('card-details-form').style.display!=='none'){
         const dr = Array.from(document.getElementById('card-details-rows').children);
-        let details = [], total = 0;
-        for (let row of dr) {
-          const n = row.querySelector('input[type=text]').value.trim();
-          const v = Math.abs(parseFloat(row.querySelector('input[type=number]').value));
-          if (n && !isNaN(v)) { details.push({ name: n, amount: v }); total += v; }
+        let details=[],total=0;
+        for(let row of dr){
+          const n=row.querySelector('input[type=text]').value.trim();
+          const v=Math.abs(parseFloat(row.querySelector('input[type=number]').value));
+          if(n&&!isNaN(v)){ details.push({name:n,amount:v}); total+=v; }
         }
-        if (!details.length) { alert('請至少輸入一筆卡費細項'); return; }
-        records[m].push({ type: t, category: c, amount: total, details });
-        document.getElementById('card-details-rows').innerHTML = '';
+        if(!details.length){ alert('請至少輸入一筆卡費細項'); return; }
+        records[m].push({type:t,category:c,amount:total,details});
+        document.getElementById('card-details-rows').innerHTML='';
       } else {
-        records[m].push({ type: t, category: c, amount: a });
+        records[m].push({type:t,category:c,amount:a});
       }
       save(); renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
     }
@@ -263,151 +283,130 @@
     function save() {
       localStorage.setItem('budget-records', JSON.stringify(records));
     }
+    function getAbs(v){ return Math.abs(Number(v)||0); }
 
-    function getAbs(v) {
-      return Math.abs(Number(v) || 0);
-    }
-
-    function renderYearSelect() {
-      const s = document.getElementById('year-select');
-      const yrs = Array.from(new Set(Object.keys(records).map(m => m.split('-')[0])));
+    function renderYearSelect(){
+      const s=document.getElementById('year-select');
+      const yrs=Array.from(new Set(Object.keys(records).map(m=>m.split('-')[0])));
       yrs.sort().reverse();
-      s.innerHTML = yrs.map(y => `<option value="${y}">${y}年</option>`).join('');
-      if (!s.value && yrs.length) s.value = yrs[0];
+      s.innerHTML=yrs.map(y=>`<option value="${y}">${y}年</option>`).join('');
+      if(!s.value&&yrs.length) s.value=yrs[0];
     }
+    document.getElementById('year-select').addEventListener('change',updateUI);
 
-    document.getElementById('year-select').addEventListener('change', updateUI);
+    function updateUI(){
+      const prev=document.getElementById('year-select').value;
+      renderYearSelect(); document.getElementById('year-select').value=prev;
+      const year=prev;
+      const overviewCont=document.getElementById('month-overview-cards');
+      const cont=document.getElementById('monthly-records');
+      overviewCont.innerHTML=''; cont.innerHTML='';
 
-    function updateUI() {
-      const prev = document.getElementById('year-select').value;
-      renderYearSelect();
-      document.getElementById('year-select').value = prev;
-      const year = prev;
-      const overviewCont = document.getElementById('month-overview-cards');
-      const cont = document.getElementById('monthly-records');
-      overviewCont.innerHTML = '';
-      cont.innerHTML = '';
+      const monthKeys=Object.keys(records)
+        .filter(m=>m.startsWith(year+'-')).sort();
+      const all=monthKeys.flatMap(m=>records[m]);
+      const totalIncome=all.filter(r=>r.type==='income').reduce((s,r)=>s+getAbs(r.amount),0);
+      const totalExpense=all.filter(r=>r.type==='expense').reduce((s,r)=>s+getAbs(r.amount),0);
+      const balance=totalIncome-totalExpense;
+      document.getElementById('total-income').textContent=`$${totalIncome.toLocaleString()}`;
+      document.getElementById('total-expense').textContent=`$${totalExpense.toLocaleString()}`;
+      document.getElementById('total-balance').textContent=`$${balance.toLocaleString()}`;
+      document.getElementById('total-balance').className = balance>=0? 'red big-shadow-num':'green big-shadow-num';
 
-      const monthKeys = Object.keys(records)
-        .filter(m => m.startsWith(year + '-'))
-        .sort();
+      let cumulative=0;
+      monthKeys.forEach(month=>{
+        const entries=records[month];
+        const incomes=entries.filter(r=>r.type==='income');
+        const expenses=entries.filter(r=>r.type==='expense');
+        const sumIncome=incomes.reduce((s,r)=>s+getAbs(r.amount),0);
+        const sumExpense=expenses.reduce((s,r)=>s+getAbs(r.amount),0);
+        cumulative+=(sumIncome-sumExpense);
 
-      const all = monthKeys.flatMap(m => records[m]);
-      const totalIncome = all.filter(r => r.type === 'income')
-                             .reduce((sum, r) => sum + getAbs(r.amount), 0);
-      const totalExpense = all.filter(r => r.type === 'expense')
-                              .reduce((sum, r) => sum + getAbs(r.amount), 0);
-      const balance = totalIncome - totalExpense;
-      document.getElementById('total-income').textContent = `$${totalIncome.toLocaleString()}`;
-      document.getElementById('total-expense').textContent = `$${totalExpense.toLocaleString()}`;
-      document.getElementById('total-balance').textContent = `$${balance.toLocaleString()}`;
-      document.getElementById('total-balance').className = balance >= 0
-        ? 'red big-shadow-num'
-        : 'green big-shadow-num';
-
-      let cumulative = 0;
-      monthKeys.forEach(month => {
-        const entries = records[month];
-        const incomes = entries.filter(r => r.type === 'income');
-        const expenses = entries.filter(r => r.type === 'expense');
-        const sumIncome = incomes.reduce((s, r) => s + getAbs(r.amount), 0);
-        const sumExpense = expenses.reduce((s, r) => s + getAbs(r.amount), 0);
-        cumulative += (sumIncome - sumExpense);
-
-        const card = document.createElement('div');
-        Object.assign(card.style, {
-          background: 'rgba(230,245,255,0.7)',
-          borderRadius: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-          padding: '1rem',
-          width: '22%'
+        // 月度 Overview 卡片
+        const card=document.createElement('div');
+        Object.assign(card.style,{
+          background:'rgba(230,245,255,0.7)',
+          borderRadius:'1rem',
+          boxShadow:'0 2px 6px rgba(0,0,0,0.1)',
+          padding:'1rem',
+          width:'22%'
         });
-        card.innerHTML = `
+        card.innerHTML=`
           <h4 style="text-align:center;">${month}</h4>
           <p>收入：<span class="red" style="font-weight:bold;">$${sumIncome.toLocaleString()}</span></p>
           <p>支出：<span class="green" style="font-weight:bold;">$${sumExpense.toLocaleString()}</span></p>
           <hr style="margin:0.5rem 0;">
           <div style="margin-top:0.5rem;font-weight:bold;">
-            累積結餘：<span style="color:${cumulative >= 0 ? '#f44336' : '#007f0e'};">$${cumulative.toLocaleString()}</span>
+            累積結餘：<span style="color:${cumulative>=0?'#f44336':'#007f0e'};">$${cumulative.toLocaleString()}</span>
           </div>
         `;
         overviewCont.appendChild(card);
 
-        let html = `
+        // 明細列表
+        let html=`
         <div class="month-box">
           <h3>${month}</h3>
           <div class="month-details">
             <div class="month-column">
               <h4>💰 收入</h4>
-              <ul>
-        `;
-        incomes.forEach((r, idx) => {
-          html += `
+              <ul>`;
+        incomes.forEach((r,idx)=>{
+          html+=`
                 <li>
                   <span>${r.category}</span>
                   <span>
                     <span class="red" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span>
                     <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','income',${idx})">🗑️</button>
                   </span>
-                </li>
-          `;
+                </li>`;
         });
-        html += `
-              </ul>
+        html+=`      </ul>
             </div>
             <div class="month-column">
               <h4>💸 支出</h4>
-              <ul class="exp-list">
-        `;
-        expenses.forEach((r, idx) => {
-     if (r.category === '卡費' && Array.isArray(r.details) && r.details.length) {
-    html += `
-      <li class="expense-item-group">
-        <!-- 1. 分類 + 切換按鈕 -->
-        <div style="display:flex; align-items:center;">
-          <span>卡費</span>
-          <button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button>
-        </div>
-
-        <!-- 2. 明細列表（先渲染）-->
-        <div class="card-detail-list">
-          <ul>
-            ${r.details.map((d, didx) => `
-              <li style="display:flex; align-items:center;">
-                <span>${d.name}</span>
-                <span style="margin:0 0.5em;">
-                  <span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span>
-                  <button class="delete-btn icon-btn"
-                          onclick="deleteCardDetail('${month}',${idx},${didx})">🗑️</button>
-                </span>
-              </li>
-            `).join('')}
-          </ul>
-        </div>
-
-        <!-- 3. 總金額（最後渲染）-->
-        <div style="display:flex; align-items:center;">
-          <span class="green" style="font-weight:bold; margin-left:auto;">
-            $${getAbs(r.amount).toLocaleString()}&nbsp;
-          </span>
-          <button class="delete-btn icon-btn"
-                  onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button>
-        </div>
-      </li>
-            `;
+              <ul class="exp-list">`;
+        expenses.forEach((r,idx)=>{
+          if(r.category==='卡費'&&Array.isArray(r.details)&&r.details.length){
+            html+=`
+                <li class="expense-item-group">
+                  <div style="display:flex;align-items:center;">
+                    <span>卡費</span>
+                    <button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button>
+                  </div>
+                  <div class="card-detail-list">
+                    <ul>
+                      ${r.details.map((d,didx)=>`
+                        <li style="display:flex;align-items:center;">
+                          <span>${d.name}</span>
+                          <span style="margin:0 0.5em;">
+                            <span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span>
+                            <button class="delete-btn icon-btn"
+                                    onclick="deleteCardDetail('${month}',${idx},${didx})">🗑️</button>
+                          </span>
+                        </li>
+                      `).join('')}
+                    </ul>
+                  </div>
+                  <div style="display:flex;align-items:center;">
+                    <span class="green" style="font-weight:bold;margin-left:auto;">
+                      $${getAbs(r.amount).toLocaleString()}&nbsp;
+                    </span>
+                    <button class="delete-btn icon-btn"
+                            onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button>
+                  </div>
+                </li>`;
           } else {
-            html += `
+            html+=`
                 <li>
                   <span>${r.category}</span>
                   <span>
                     <span class="green" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span>
                     <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button>
                   </span>
-                </li>
-            `;
+                </li>`;
           }
         });
-        html += `
+        html+=`
               </ul>
             </div>
           </div>
@@ -415,13 +414,12 @@
             <div class="month-total red">收入總計：$${sumIncome.toLocaleString()}</div>
             <div class="month-total green">支出總計：$${sumExpense.toLocaleString()}</div>
           </div>
-        </div>
-        `;
+        </div>`;
         cont.insertAdjacentHTML('afterbegin', html);
       });
     }
 
-    window.toggleDetail = (btn) => {
+    window.toggleDetail = btn => {
       const d = btn.closest('.expense-item-group').querySelector('.card-detail-list');
       if (!d) return;
       d.classList.toggle('open');
@@ -432,85 +430,73 @@
       if (!records[month]) return;
       const arr = records[month].filter(r => r.type === type);
       if (!arr[idx]) return;
-      if (!confirm(`確定要刪除這一筆${type==='income' ? '收入' : '支出'}？`)) return;
-      let i = -1, c = 0;
-      for (let j = 0; j < records[month].length; j++) {
-        if (records[month][j].type === type) {
-          if (c === idx) { i = j; break; }
+      if (!confirm(`確定要刪除這一筆${type==='income'?'收入':'支出'}？`)) return;
+      let i=-1, c=0;
+      for (let j=0;j<records[month].length;j++){
+        if(records[month][j].type===type){
+          if(c===idx){ i=j; break; }
           c++;
         }
       }
-      if (i >= 0) {
-        records[month].splice(i, 1);
-        if (!records[month].length) delete records[month];
+      if(i>=0){
+        records[month].splice(i,1);
+        if(!records[month].length) delete records[month];
         save(); updateUI(); renderCategorySelect();
       }
     };
 
     window.deleteCardDetail = (month, expIdx, detailIdx) => {
-      if (!records[month]) return;
-      let ci = -1, c = 0;
-      for (let j = 0; j < records[month].length; j++) {
-        if (records[month][j].type === 'expense') {
-          if (c === expIdx) { ci = j; break; }
+      if(!records[month]) return;
+      let ci=-1,c=0;
+      for(let j=0;j<records[month].length;j++){
+        if(records[month][j].type==='expense'){
+          if(c===expIdx){ ci=j; break; }
           c++;
         }
       }
-      if (ci < 0) return;
-      const card = records[month][ci];
-      if (!card.details || !card.details[detailIdx]) return;
-      if (!confirm('刪除這個卡費細項？')) return;
-      card.details.splice(detailIdx, 1);
-      card.amount = card.details.reduce((s, d) => s + getAbs(d.amount), 0);
+      if(ci<0) return;
+      const card=records[month][ci];
+      if(!card.details||!card.details[detailIdx]) return;
+      if(!confirm('刪除這個卡費細項？')) return;
+      card.details.splice(detailIdx,1);
+      card.amount=card.details.reduce((s,d)=>s+getAbs(d.amount),0);
       save(); updateUI();
     };
 
-    function exportJSON() {
-      const data = Object.entries(records).flatMap(([m, a]) =>
-        a.map(o => ({ month: m, ...o }))
-      );
-      const b = new Blob([JSON.stringify({ records: data }, null, 2)], { type: 'application/json' });
-      const u = URL.createObjectURL(b);
-      const aEl = document.createElement('a');
-      aEl.href = u;
-      aEl.download = 'backup.json';
-      aEl.click();
-      URL.revokeObjectURL(u);
+    function exportJSON(){
+      const data=Object.entries(records).flatMap(([m,a])=>a.map(o=>({month:m,...o})));
+      const b=new Blob([JSON.stringify({records:data},null,2)],{type:'application/json'});
+      const u=URL.createObjectURL(b);
+      const aEl=document.createElement('a');
+      aEl.href=u; aEl.download='backup.json'; aEl.click(); URL.revokeObjectURL(u);
     }
 
-    function importJSON(e) {
-      const f = e.target.files[0];
-      if (!f) return;
-      const r = new FileReader();
-      r.onload = ev => {
-        try {
-          const d = JSON.parse(ev.target.result);
-          records = {};
-          d.records.forEach(o => {
-            if (!records[o.month]) records[o.month] = [];
-            if (o.details && Array.isArray(o.details)) {
+    function importJSON(e){
+      const f=e.target.files[0];
+      if(!f) return;
+      const r=new FileReader();
+      r.onload=ev=>{
+        try{
+          const d=JSON.parse(ev.target.result);
+          records={};
+          d.records.forEach(o=>{
+            if(!records[o.month]) records[o.month]=[];
+            if(o.details&&Array.isArray(o.details)){
               records[o.month].push({
-                type: o.type,
-                category: o.category,
-                amount: Math.abs(parseFloat(o.amount)),
-                details: o.details.map(d2 => ({
-                  name: d2.name,
-                  amount: Math.abs(parseFloat(d2.amount))
-                }))
+                type:o.type, category:o.category,
+                amount:Math.abs(parseFloat(o.amount)),
+                details:o.details.map(d2=>({name:d2.name,amount:Math.abs(parseFloat(d2.amount))}))
               });
             } else {
               records[o.month].push({
-                type: o.type,
-                category: o.category,
-                amount: Math.abs(parseFloat(o.amount))
+                type:o.type, category:o.category,
+                amount:Math.abs(parseFloat(o.amount))
               });
             }
           });
           save(); renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
           alert('匯入成功！');
-        } catch (err) {
-          alert('檔案格式錯誤！' + err);
-        }
+        }catch(err){ alert('檔案格式錯誤！'+err); }
       };
       r.readAsText(f);
     }

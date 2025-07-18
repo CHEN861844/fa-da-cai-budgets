@@ -7,32 +7,122 @@
 
   <!-- Firebase v9 模組化 引入 -->
   <script type="module">
-    // 從 CDN 載入 Firebase v9 ESM 模組
-    import { initializeApp }       from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getAnalytics }        from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
-    import { getFirestore }        from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+    import { getFirestore, collection, getDocs, addDoc, deleteDoc, updateDoc, doc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // 你的 Firebase config（直接從 Console 拷貝貼上）
+    // Firebase 配置
     const firebaseConfig = {
       apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
       authDomain: "fa-da-cai-budgets.firebaseapp.com",
       projectId: "fa-da-cai-budgets",
-      storageBucket: "fa-da-cai-budgets.firebasestorage.app",
+      storageBucket: "fa-da-cai-budgets.appspot.com",
       messagingSenderId: "775217187438",
       appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
       measurementId: "G-DZME3R8WF7"
     };
 
-    // 初始化 Firebase App / Analytics / Firestore
-    const app       = initializeApp(firebaseConfig);
+    // 初始化 Firebase
+    const app = initializeApp(firebaseConfig);
     const analytics = getAnalytics(app);
-    const db        = getFirestore(app);
+    const db = getFirestore(app);
 
-    // 暴露到全局，方便後續改寫 CRUD 邏輯時使用
-    window.db = db;
+    // 全局 records
+    window.records = {};
+
+    // 載入雲端資料
+    async function loadRecordsFromCloud() {
+      const snap = await getDocs(collection(db, 'records'));
+      records = {};
+      snap.forEach(s => {
+        const o = s.data(); o._id = s.id;
+        if (!records[o.month]) records[o.month] = [];
+        records[o.month].push(o);
+      });
+      renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
+    }
+    document.addEventListener('DOMContentLoaded', loadRecordsFromCloud);
+
+    // 新增記錄
+    async function addRecord() {
+      const m = document.getElementById('record-month').value;
+      const t = document.getElementById('record-type').value;
+      const c = document.getElementById('record-category').value.trim();
+      if (!m || !c) { alert('請填寫日期與分類'); return; }
+      let details = [], amount = 0;
+      if (t === 'expense' && c === '卡費') {
+        document.querySelectorAll('#card-details-rows .detail-row').forEach(r => {
+          const name = r.querySelector('input[type=text]').value.trim();
+          const val = parseFloat(r.querySelector('input[type=number]').value) || 0;
+          if (name) { details.push({ name, amount: val }); amount += val; }
+        });
+        if (!details.length) { alert('請至少輸入一筆卡費細項'); return; }
+      } else {
+        amount = Math.abs(parseFloat(document.getElementById('record-amount').value)) || 0;
+      }
+      const payload = { month: m, type: t, category: c, amount, details };
+      await addDoc(collection(db, 'records'), payload);
+      document.getElementById('card-details-rows').innerHTML = '';
+      document.getElementById('record-amount').value = '';
+      loadRecordsFromCloud();
+    }
+
+    // 刪除記錄
+    async function deleteRecordFromList(month, type, idx) {
+      const rec = records[month] && records[month][idx];
+      if (!rec || !rec._id) return;
+      if (!confirm('確定要刪除這一筆？')) return;
+      await deleteDoc(doc(db, 'records', rec._id));
+      loadRecordsFromCloud();
+    }
+
+    // 刪除卡費細項
+    async function deleteCardDetail(month, expIdx, detailIdx) {
+      const rec = records[month] && records[month][expIdx];
+      if (!rec || !rec._id) return;
+      rec.details.splice(detailIdx, 1);
+      rec.amount = rec.details.reduce((s, d) => s + d.amount, 0);
+      await updateDoc(doc(db, 'records', rec._id), { details: rec.details, amount: rec.amount });
+      loadRecordsFromCloud();
+    }
+
+    // 匯入 JSON (同步到 Firestore)
+    async function importJSON(e) {
+      const file = e.target.files[0]; if (!file) return;
+      const text = await file.text();
+      try {
+        const data = JSON.parse(text).records;
+        for (const o of data) {
+          const payload = { month: o.month, type: o.type, category: o.category, amount: o.amount, details: o.details || [] };
+          await addDoc(collection(db, 'records'), payload);
+        }
+        loadRecordsFromCloud();
+      } catch (err) { alert('匯入失敗: ' + err); }
+    }
+
+    // 匯出 JSON
+    function exportJSON() {
+      const all = [];
+      Object.entries(records).forEach(([m, arr]) => arr.forEach(r => {
+        const copy = { month: m, type: r.type, category: r.category, amount: r.amount, details: r.details || [] };
+        all.push(copy);
+      }));
+      const blob = new Blob([JSON.stringify({ records: all }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'backup.json'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // 綁定全局
+    window.addRecord = addRecord;
+    window.deleteRecordFromList = deleteRecordFromList;
+    window.deleteCardDetail = deleteCardDetail;
+    window.importJSON = importJSON;
+    window.exportJSON = exportJSON;
   </script>
 
   <style>
+    /* 原完整 CSS 如前面，無省略 */
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body { margin: 0; padding: 1rem; background: url('bg.jpg') no-repeat center center fixed; background-size: cover; overflow-x: hidden; color: #333; }
     h1 { text-align: center; color: #f44336; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
@@ -45,18 +135,7 @@
     .form-section h2 { text-align: center; }
     .form-section > div { display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .form-section input, .form-section select, .form-section button { flex: 1; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid #ccc; }
-
-    /* 新增：透明背景的 icon 按鈕 */
-    .icon-btn,
-    .delete-btn,
-    .expand-btn {
-      background: transparent !important;
-      border: none !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      cursor: pointer;
-    }
-
+    .icon-btn, .delete-btn, .expand-btn { background: transparent!important; border: none!important; padding: 0; margin: 0; cursor: pointer; }
     .category-row { display: flex; align-items: center; gap: 0.5em; flex: 1.3; }
     .category-row select { flex: 2; }
     .category-row button { flex: none; }
@@ -64,12 +143,11 @@
     .add-category-row input { flex: 2; }
     .add-category-row button { flex: none; }
     .card-details-form { width: 100%; background: #fffde7; border-radius: 0.5rem; margin: 0.5em 0; padding: 0.7em 1em; }
-    .card-details-form h4 { margin: 0 0 0.5em 0; }
+    .card-details-form h4 { margin: 0 0 0.5em; }
     .card-details-form .detail-row { display: flex; gap: 0.4em; margin-bottom: 0.5em; align-items: center; }
     .card-details-form input[type=text] { flex: 2; }
     .card-details-form input[type=number] { flex: 1.2; }
     .card-details-form button.add-detail-btn { background: #007f0e; color: #fff; border-radius: 0.3em; padding: 0 0.7em; }
-
     .import-export { max-width: 250px; float: right; margin-top: -7rem; background: rgba(255,255,255,0.7); padding: 1rem; border-radius: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
     .monthly-records { max-width: 900px; margin: 2rem auto; }
     .month-box { background: rgba(230,245,255,0.7); border-radius: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 2rem; }
@@ -77,7 +155,7 @@
     .month-details { display: flex; gap: 1rem; margin-top: 1rem; }
     .month-column { flex: 1; padding: 0.5rem; display: flex; flex-direction: column; justify-content: flex-start; border-right: 1px solid #ccc; }
     .month-column:last-child { border-right: none; }
-    .month-column h4 { margin: 0 0 0.25rem 0; }
+    .month-column h4 { margin: 0 0 0.25rem; }
     .month-column ul, .month-column .exp-list { list-style: none; padding: 0; margin: 0; }
     .month-column li { display: flex; align-items: center; justify-content: space-between; padding: 0.25rem 0; }
     .expense-item-group { display: block; }
@@ -85,13 +163,12 @@
     .card-detail-list.open { max-height: 600px; transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1); }
     .card-detail-list ul { margin: 0; padding: 0; list-style: none; }
     .card-detail-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.17em 0; }
-
     .month-totals { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; background: rgba(255,255,255,0.6); padding: 0.75rem; border-radius: 0.75rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); border-top: 1px solid #ccc; }
-    .month-total { flex: 1; text-align: center; font-weight: bold; }
-    .red { color: #f44336; } .green { color: #007f0e; }
-    #shin-icon { position: fixed; bottom: 20px; right: 20px; width: 200px; animation: float 3s infinite; cursor: pointer; z-index: 1000; }
-    #shin-dialog { position: fixed; bottom: 320px; right: 20px; background: rgba(255,249,196,0.95); padding: 0.75rem 1rem; border-radius: 1rem; box-shadow: 0 0 6px rgba(0,0,0,0.2); font-size: 14px; max-width: 200px; z-index: 999; }
-    #shin-dialog::after { content: ""; position: absolute; bottom: -12px; right: 20px; border: 10px solid transparent; border-top-color: rgba(255,249,196,0.95); }
+    .month-total { flex: 1; text-align: center; font-weight:bold; }
+    .red { color:#f44336; } .green { color:#007f0e; }
+    #shin-icon { position: fixed; bottom:20px; right:20px; width:200px; animation: float 3s infinite; cursor:pointer; z-index:1000; }
+    #shin-dialog { position: fixed; bottom:320px; right:20px; background:rgba(255,249,196,0.95); padding:0.75rem 1rem; border-radius:1rem; box-shadow:0 0 6px rgba(0,0,0,0.2); font-size:14px; max-width:200px; z-index:999; }
+    #shin-dialog::after { content:""; position:absolute; bottom:-12px; right:20px; border:10px solid transparent; border-top-color:rgba(255,249,196,0.95); }
     @keyframes float { 0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);} }
   </style>
 </head>
@@ -102,57 +179,58 @@
     <select id="year-select"></select>
   </div>
   <div class="summary">
-    <div class="card"><h2>總收入</h2><p class="red big-shadow-num" id="total-income">$0</p></div>
-    <div class="card"><h2>總支出</h2><p class="green big-shadow-num" id="total-expense">$0</p></div>
-    <div class="card"><h2>結餘</h2><p class="red big-shadow-num" id="total-balance">$0</p></div>
+    <div class="card"><h2>總收入</h2><p id="total-income" class="red big-shadow-num">$0</p></div>
+    <div class="card"><h2>總支出</h2><p id="total-expense" class="green big-shadow-num">$0</p></div>
+    <div class="card"><h2>結餘</h2><p id="total-balance" class="red big-shadow-num">$0</p></div>
   </div>
   <div class="form-section">
     <h2>新增月度記錄</h2>
     <div>
-      <input type="month" id="record-month">
+      <input type="month" id="record-month" />
       <select id="record-type">
         <option value="income">收入</option>
         <option value="expense">支出</option>
       </select>
       <span class="category-row">
         <select id="record-category"></select>
-        <button type="button" onclick="showAddCategory()">＋</button>
-        <button type="button" class="icon-btn" onclick="showDeleteCategory()">🗑️</button>
+        <button onclick="showAddCategory()">＋</button>
+        <button class="icon-btn" onclick="showDeleteCategory()">🗑️</button>
       </span>
-      <input type="number" id="record-amount" placeholder="金額">
+      <input type="number" id="record-amount" placeholder="金額" />
       <button onclick="addRecord()">新增</button>
     </div>
     <div id="add-category-row" class="add-category-row" style="display:none;">
-      <input type="text" id="new-category-name" placeholder="輸入新分類名稱">
-      <button type="button" onclick="addCategory()">新增</button>
-      <button type="button" onclick="hideAddCategory()">取消</button>
+      <input type="text" id="new-category-name" placeholder="輸入新分類名稱" />
+      <button onclick="addCategory()">新增</button>
+      <button onclick="hideAddCategory()">取消</button>
     </div>
     <div id="delete-category-row" class="add-category-row" style="display:none;">
       <select id="del-category-select"></select>
-      <button type="button" onclick="deleteCategory()">刪除</button>
-      <button type="button" onclick="hideDeleteCategory()">取消</button>
+      <button onclick="deleteCategory()">刪除</button>
+      <button onclick="hideDeleteCategory()">取消</button>
     </div>
     <div id="card-details-form" class="card-details-form" style="display:none;">
       <h4>卡費細項</h4>
       <div id="card-details-rows"></div>
-      <button type="button" class="add-detail-btn" onclick="addCardDetailRow()">＋新增細項</button>
+      <button class="add-detail-btn" onclick="addCardDetailRow()">＋新增細項</button>
     </div>
   </div>
   <div class="import-export">
     <h3>資料管理</h3>
-    <input type="file" accept=".json" onchange="importJSON(event)">
+    <input type="file" accept=".json" onchange="importJSON(event)" />
     <button onclick="exportJSON()">匯出 JSON</button>
   </div>
   <div id="month-overview" class="monthly-records">
     <h2 style="text-align:center;">📊 月份總覽</h2>
-    <div id="month-overview-cards" style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:flex-start;"></div>
+    <div id="month-overview-cards" style="display:flex;flex-wrap:wrap;gap:1rem;"></div>
   </div>
   <div id="monthly-records" class="monthly-records"></div>
 
-  <img id="shin-icon" src="1.png" alt="小新浮動">
+  <img id="shin-icon" src="1.png" alt="小新浮動" />
   <div id="shin-dialog">小新提醒：今天有記帳嗎？</div>
 
   <script>
+    // UI 邏輯（已移除 localStorage）
     const pics = ['1.png','2.png','3.png','4.png','5.jpg','6.jpg'];
     const messages = [
       "小新提醒：今天有記帳嗎？","記得定期記帳，發大財唷～💰",
@@ -167,10 +245,6 @@
       msgIndex = (msgIndex + 1) % messages.length;
       document.getElementById('shin-dialog').textContent = messages[msgIndex];
     }, 5000);
-
-    let records = {};
-    const saved = localStorage.getItem("budget-records");
-    if (saved) try { records = JSON.parse(saved); } catch {}
 
     let customIncomeCategories = [], customExpenseCategories = [];
     let hiddenIncomeCategories = [], hiddenExpenseCategories = [];
@@ -197,14 +271,18 @@
       document.getElementById('add-category-row').style.display = '';
       document.getElementById('delete-category-row').style.display = 'none';
     }
-    function hideAddCategory() { document.getElementById('add-category-row').style.display = 'none'; document.getElementById('new-category-name').value = ''; }
+    function hideAddCategory() {
+      document.getElementById('add-category-row').style.display = 'none';
+      document.getElementById('new-category-name').value = '';
+    }
     function addCategory() {
       const n = document.getElementById('new-category-name').value.trim();
       const type = document.getElementById('record-type').value;
       if (n) {
         if (type === 'income' && !customIncomeCategories.includes(n)) customIncomeCategories.push(n);
-        if (type === 'expense'&& !customExpenseCategories.includes(n)) customExpenseCategories.push(n);
-        renderCategorySelect(); document.getElementById('record-category').value = n;
+        if (type === 'expense' && !customExpenseCategories.includes(n)) customExpenseCategories.push(n);
+        renderCategorySelect();
+        document.getElementById('record-category').value = n;
       }
       hideAddCategory(); checkCardDetailForm();
     }
@@ -221,29 +299,28 @@
       const type = document.getElementById('record-type').value;
       const c = document.getElementById('del-category-select').value;
       if (!confirm(`確定要從選單移除「${c}」這個分類嗎？`)) return;
-      if (type==='income') {
+      if (type === 'income') {
         hiddenIncomeCategories.push(c);
-        customIncomeCategories = customIncomeCategories.filter(v=>v!==c);
+        customIncomeCategories = customIncomeCategories.filter(v => v !== c);
       } else {
         hiddenExpenseCategories.push(c);
-        customExpenseCategories = customExpenseCategories.filter(v=>v!==c);
+        customExpenseCategories = customExpenseCategories.filter(v => v !== c);
       }
       renderCategorySelect(); hideDeleteCategory();
     }
-    function hideDeleteCategory(){ document.getElementById('delete-category-row').style.display='none'; }
+    function hideDeleteCategory() { document.getElementById('delete-category-row').style.display = 'none'; }
 
-    function checkCardDetailForm(){
+    function checkCardDetailForm() {
       const type = document.getElementById('record-type').value;
       const cat  = document.getElementById('record-category').value.trim();
       document.getElementById('card-details-form').style.display =
-        (type==='expense'&&cat==='卡費')?'':'none';
+        (type==='expense'&&cat==='卡費') ? '' : 'none';
     }
 
-    function addCardDetailRow(name='',amount=''){
+    function addCardDetailRow(name = '', amount = '') {
       const ctr = document.getElementById('card-details-rows');
-      const row = document.createElement('div');
-      row.className='detail-row';
-      row.innerHTML=`
+      const row = document.createElement('div'); row.className = 'detail-row';
+      row.innerHTML = `
         <input type="text" placeholder="名稱" value="${name}">
         <input type="number" placeholder="金額" value="${amount}">
         <button class="icon-btn" onclick="this.parentNode.remove()">🗑️</button>
@@ -251,87 +328,52 @@
       ctr.appendChild(row);
     }
 
-    document.getElementById('record-type').addEventListener('change',renderCategorySelect);
-    document.getElementById('record-category').addEventListener('change',checkCardDetailForm);
+    document.getElementById('record-type').addEventListener('change', renderCategorySelect);
+    document.getElementById('record-category').addEventListener('change', checkCardDetailForm);
 
-    function addRecord(){
-      const m = document.getElementById('record-month').value;
-      const t = document.getElementById('record-type').value;
-      const c = document.getElementById('record-category').value.trim();
-      const a = Math.abs(parseFloat(document.getElementById('record-amount').value));
-      if(!m||!c||(isNaN(a)&&!(t==='expense'&&c==='卡費'))){
-        alert('請填寫所有欄位');return;
-      }
-      if(!records[m]) records[m]=[];
-      if(t==='expense'&&c==='卡費'&&document.getElementById('card-details-form').style.display!=='none'){
-        const dr = Array.from(document.getElementById('card-details-rows').children);
-        let details=[],total=0;
-        for(let row of dr){
-          const n=row.querySelector('input[type=text]').value.trim();
-          const v=Math.abs(parseFloat(row.querySelector('input[type=number]').value));
-          if(n&&!isNaN(v)){ details.push({name:n,amount:v}); total+=v; }
-        }
-        if(!details.length){ alert('請至少輸入一筆卡費細項'); return; }
-        records[m].push({type:t,category:c,amount:total,details});
-        document.getElementById('card-details-rows').innerHTML='';
-      } else {
-        records[m].push({type:t,category:c,amount:a});
-      }
-      save(); renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
-    }
-
-    function save() {
-      localStorage.setItem('budget-records', JSON.stringify(records));
-    }
-    function getAbs(v){ return Math.abs(Number(v)||0); }
-
-    function renderYearSelect(){
-      const s=document.getElementById('year-select');
-      const yrs=Array.from(new Set(Object.keys(records).map(m=>m.split('-')[0])));
+    function renderYearSelect() {
+      const s = document.getElementById('year-select');
+      const yrs = Array.from(new Set(Object.keys(records).map(m => m.split('-')[0])));
       yrs.sort().reverse();
-      s.innerHTML=yrs.map(y=>`<option value="${y}">${y}年</option>`).join('');
-      if(!s.value&&yrs.length) s.value=yrs[0];
+      s.innerHTML = yrs.map(y => `<option value="${y}">${y}年</option>`).join('');
+      if (!s.value && yrs.length) s.value = yrs[0];
     }
-    document.getElementById('year-select').addEventListener('change',updateUI);
+    document.getElementById('year-select').addEventListener('change', updateUI);
 
-    function updateUI(){
-      const prev=document.getElementById('year-select').value;
-      renderYearSelect(); document.getElementById('year-select').value=prev;
-      const year=prev;
-      const overviewCont=document.getElementById('month-overview-cards');
-      const cont=document.getElementById('monthly-records');
-      overviewCont.innerHTML=''; cont.innerHTML='';
+    function getAbs(v) { return Math.abs(Number(v) || 0); }
 
-      const monthKeys=Object.keys(records)
-        .filter(m=>m.startsWith(year+'-')).sort();
-      const all=monthKeys.flatMap(m=>records[m]);
-      const totalIncome=all.filter(r=>r.type==='income').reduce((s,r)=>s+getAbs(r.amount),0);
-      const totalExpense=all.filter(r=>r.type==='expense').reduce((s,r)=>s+getAbs(r.amount),0);
-      const balance=totalIncome-totalExpense;
-      document.getElementById('total-income').textContent=`$${totalIncome.toLocaleString()}`;
-      document.getElementById('total-expense').textContent=`$${totalExpense.toLocaleString()}`;
-      document.getElementById('total-balance').textContent=`$${balance.toLocaleString()}`;
+    function updateUI() {
+      const prev = document.getElementById('year-select').value;
+      renderYearSelect(); document.getElementById('year-select').value = prev;
+      const year = prev;
+      const overviewCont = document.getElementById('month-overview-cards');
+      const cont = document.getElementById('monthly-records');
+      overviewCont.innerHTML = '';
+      cont.innerHTML = '';
+
+      const monthKeys = Object.keys(records).filter(m => m.startsWith(year + '-')).sort();
+      const all = monthKeys.flatMap(m => records[m]);
+      const totalIncome = all.filter(r => r.type === 'income').reduce((s,r) => s + getAbs(r.amount), 0);
+      const totalExpense = all.filter(r => r.type === 'expense').reduce((s,r) => s + getAbs(r.amount), 0);
+      const balance = totalIncome - totalExpense;
+      document.getElementById('total-income').textContent = `$${totalIncome.toLocaleString()}`;
+      document.getElementById('total-expense').textContent = `$${totalExpense.toLocaleString()}`;
+      document.getElementById('total-balance').textContent = `$${balance.toLocaleString()}`;
       document.getElementById('total-balance').className = balance>=0? 'red big-shadow-num':'green big-shadow-num';
 
-      let cumulative=0;
-      monthKeys.forEach(month=>{
-        const entries=records[month];
-        const incomes=entries.filter(r=>r.type==='income');
-        const expenses=entries.filter(r=>r.type==='expense');
-        const sumIncome=incomes.reduce((s,r)=>s+getAbs(r.amount),0);
-        const sumExpense=expenses.reduce((s,r)=>s+getAbs(r.amount),0);
-        cumulative+=(sumIncome-sumExpense);
+      let cumulative = 0;
+      monthKeys.forEach(month => {
+        const entries = records[month];
+        const incomes = entries.filter(r => r.type==='income');
+        const expenses = entries.filter(r => r.type==='expense');
+        const sumIncome = incomes.reduce((s,r) => s + getAbs(r.amount), 0);
+        const sumExpense = expenses.reduce((s,r) => s + getAbs(r.amount), 0);
+        cumulative += (sumIncome - sumExpense);
 
-        // 月度 Overview 卡片
-        const card=document.createElement('div');
-        Object.assign(card.style,{
-          background:'rgba(230,245,255,0.7)',
-          borderRadius:'1rem',
-          boxShadow:'0 2px 6px rgba(0,0,0,0.1)',
-          padding:'1rem',
-          width:'22%'
+        const card = document.createElement('div'); Object.assign(card.style, {
+          background:'rgba(230,245,255,0.7)', borderRadius:'1rem', boxShadow:'0 2px 6px rgba(0,0,0,0.1)', padding:'1rem', width:'22%'
         });
-        card.innerHTML=`
+        card.innerHTML = `
           <h4 style="text-align:center;">${month}</h4>
           <p>收入：<span class="red" style="font-weight:bold;">$${sumIncome.toLocaleString()}</span></p>
           <p>支出：<span class="green" style="font-weight:bold;">$${sumExpense.toLocaleString()}</span></p>
@@ -342,170 +384,36 @@
         `;
         overviewCont.appendChild(card);
 
-        // 明細列表
-        let html=`
+        let html = `
         <div class="month-box">
           <h3>${month}</h3>
           <div class="month-details">
             <div class="month-column">
-              <h4>💰 收入</h4>
-              <ul>`;
-        incomes.forEach((r,idx)=>{
-          html+=`
-                <li>
-                  <span>${r.category}</span>
-                  <span>
-                    <span class="red" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span>
-                    <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','income',${idx})">🗑️</button>
-                  </span>
-                </li>`;
+              <h4>💰 收入</h4><ul>`;
+        incomes.forEach((r,idx) => {
+          html += `<li><span>${r.category}</span><span><span class="red" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','income',${idx})">🗑️</button></span></li>`;
         });
-        html+=`      </ul>
-            </div>
-            <div class="month-column">
-              <h4>💸 支出</h4>
-              <ul class="exp-list">`;
-        expenses.forEach((r,idx)=>{
-          if(r.category==='卡費'&&Array.isArray(r.details)&&r.details.length){
-            html+=`
-                <li class="expense-item-group">
-                  <div style="display:flex;align-items:center;">
-                    <span>卡費</span>
-                    <button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button>
-                  </div>
-                  <div class="card-detail-list">
-                    <ul>
-                      ${r.details.map((d,didx)=>`
-                        <li style="display:flex;align-items:center;">
-                          <span>${d.name}</span>
-                          <span style="margin:0 0.5em;">
-                            <span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span>
-                            <button class="delete-btn icon-btn"
-                                    onclick="deleteCardDetail('${month}',${idx},${didx})">🗑️</button>
-                          </span>
-                        </li>
-                      `).join('')}
-                    </ul>
-                  </div>
-                  <div style="display:flex;align-items:center;">
-                    <span class="green" style="font-weight:bold;margin-left:auto;">
-                      $${getAbs(r.amount).toLocaleString()}&nbsp;
-                    </span>
-                    <button class="delete-btn icon-btn"
-                            onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button>
-                  </div>
-                </li>`;
+        html += `</ul></div><div class="month-column"><h4>💸 支出</h4><ul class="exp-list">`;
+        expenses.forEach((r,idx) => {
+          if(r.category==='卡費' && Array.isArray(r.details) && r.details.length) {
+            html += `<li class="expense-item-group"><div style="display:flex;align-items:center;"><span>卡費</span><button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button></div><div class="card-detail-list"><ul>`;
+            r.details.forEach((d,didx) => {
+              html += `<li style="display:flex;align-items:center;"><span>${d.name}</span><span style="margin:0 0.5em;"><span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteCardDetail('${month}',${idx},${didx})">🗑️</button></span></li>`;
+            });
+            html += `</ul></div><div style="display:flex;align-items:center;"><span class="green" style="font-weight:bold;margin-left:auto;">$${getAbs(r.amount).toLocaleString()}&nbsp;</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button></div></li>`;
           } else {
-            html+=`
-                <li>
-                  <span>${r.category}</span>
-                  <span>
-                    <span class="green" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span>
-                    <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button>
-                  </span>
-                </li>`;
+            html += `<li><span>${r.category}</span><span><span class="green" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button></span></li>`;
           }
         });
-        html+=`
-              </ul>
-            </div>
-          </div>
-          <div class="month-totals">
-            <div class="month-total red">收入總計：$${sumIncome.toLocaleString()}</div>
-            <div class="month-total green">支出總計：$${sumExpense.toLocaleString()}</div>
-          </div>
-        </div>`;
+        html += `</ul></div></div><div class="month-totals"><div class="month-total red">收入總計：$${sumIncome.toLocaleString()}</div><div class="month-total green">支出總計：$${sumExpense.toLocaleString()}</div></div></div>`;
         cont.insertAdjacentHTML('afterbegin', html);
       });
     }
 
     window.toggleDetail = btn => {
       const d = btn.closest('.expense-item-group').querySelector('.card-detail-list');
-      if (!d) return;
-      d.classList.toggle('open');
-      btn.textContent = d.classList.contains('open') ? '▲' : '▼';
+      if (!d) return; d.classList.toggle('open'); btn.textContent = d.classList.contains('open') ? '▲' : '▼';
     };
-
-    window.deleteRecordFromList = (month, type, idx) => {
-      if (!records[month]) return;
-      const arr = records[month].filter(r => r.type === type);
-      if (!arr[idx]) return;
-      if (!confirm(`確定要刪除這一筆${type==='income'?'收入':'支出'}？`)) return;
-      let i=-1, c=0;
-      for (let j=0;j<records[month].length;j++){
-        if(records[month][j].type===type){
-          if(c===idx){ i=j; break; }
-          c++;
-        }
-      }
-      if(i>=0){
-        records[month].splice(i,1);
-        if(!records[month].length) delete records[month];
-        save(); updateUI(); renderCategorySelect();
-      }
-    };
-
-    window.deleteCardDetail = (month, expIdx, detailIdx) => {
-      if(!records[month]) return;
-      let ci=-1,c=0;
-      for(let j=0;j<records[month].length;j++){
-        if(records[month][j].type==='expense'){
-          if(c===expIdx){ ci=j; break; }
-          c++;
-        }
-      }
-      if(ci<0) return;
-      const card=records[month][ci];
-      if(!card.details||!card.details[detailIdx]) return;
-      if(!confirm('刪除這個卡費細項？')) return;
-      card.details.splice(detailIdx,1);
-      card.amount=card.details.reduce((s,d)=>s+getAbs(d.amount),0);
-      save(); updateUI();
-    };
-
-    function exportJSON(){
-      const data=Object.entries(records).flatMap(([m,a])=>a.map(o=>({month:m,...o})));
-      const b=new Blob([JSON.stringify({records:data},null,2)],{type:'application/json'});
-      const u=URL.createObjectURL(b);
-      const aEl=document.createElement('a');
-      aEl.href=u; aEl.download='backup.json'; aEl.click(); URL.revokeObjectURL(u);
-    }
-
-    function importJSON(e){
-      const f=e.target.files[0];
-      if(!f) return;
-      const r=new FileReader();
-      r.onload=ev=>{
-        try{
-          const d=JSON.parse(ev.target.result);
-          records={};
-          d.records.forEach(o=>{
-            if(!records[o.month]) records[o.month]=[];
-            if(o.details&&Array.isArray(o.details)){
-              records[o.month].push({
-                type:o.type, category:o.category,
-                amount:Math.abs(parseFloat(o.amount)),
-                details:o.details.map(d2=>({name:d2.name,amount:Math.abs(parseFloat(d2.amount))}))
-              });
-            } else {
-              records[o.month].push({
-                type:o.type, category:o.category,
-                amount:Math.abs(parseFloat(o.amount))
-              });
-            }
-          });
-          save(); renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
-          alert('匯入成功！');
-        }catch(err){ alert('檔案格式錯誤！'+err); }
-      };
-      r.readAsText(f);
-    }
-
-    // 初始渲染
-    renderYearSelect();
-    updateUI();
-    renderCategorySelect();
-    checkCardDetailForm();
   </script>
 </body>
 </html>

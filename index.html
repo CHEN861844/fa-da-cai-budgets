@@ -245,100 +245,133 @@
   <!-- Module Script -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
-    import {
-      getFirestore, collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where
-    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+import {
+  getFirestore, collection, getDocs, addDoc, deleteDoc, updateDoc, doc
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    // Firebase 配置（請保留）
-    const firebaseConfig = {
-      apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
-      authDomain: "fa-da-cai-budgets.firebaseapp.com",
-      projectId: "fa-da-cai-budgets",
-      storageBucket: "fa-da-cai-budgets.appspot.com",
-      messagingSenderId: "775217187438",
-      appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
-      measurementId: "G-DZME3R8WF7"
-    };
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const db = getFirestore(app);
+// Firebase 配置（原配置不變）
+const firebaseConfig = {
+  apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
+  authDomain: "fa-da-cai-budgets.firebaseapp.com",
+  projectId: "fa-da-cai-budgets",
+  storageBucket: "fa-da-cai-budgets.appspot.com",
+  messagingSenderId: "775217187438",
+  appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
+  measurementId: "G-DZME3R8WF7"
+};
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
 
-    window.records = {};
-    window.currentOwner = 'me';
+window.records = {};
+window.currentOwner = 'me';
 
-    async function loadRecordsFromCloud() {
-      const snap = await getDocs(collection(db,'records'));
-      records = {};
-      snap.forEach(s=>{ const o=s.data(); o._id=s.id; if(!records[o.month]) records[o.month]=[]; records[o.month].push(o); });
-      renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
+// 根據目前帳本動態取得集合
+function currentCollection(){
+  return collection(db, window.currentOwner+'_records');
+}
+
+// 讀取資料
+async function loadRecordsFromCloud() {
+  const snap = await getDocs(currentCollection());
+  records = {};
+  snap.forEach(s=>{
+    const o = s.data();
+    o._id = s.id;
+    if(!records[o.month]) records[o.month] = [];
+    records[o.month].push(o);
+  });
+  renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
+}
+document.addEventListener('DOMContentLoaded', loadRecordsFromCloud);
+
+// 新增資料
+async function addRecord() {
+  const m = document.getElementById('record-month').value;
+  let c = document.getElementById('record-category').value.trim();
+  const t = document.getElementById('record-type').value;
+  if(!m){ alert('請填寫日期'); return; }
+  if(window.currentOwner==='fund') c='結婚基金';
+  if(!c){ alert('請選擇分類'); return; }
+  let details=[], amount=0;
+  if(t==='expense'&&c==='卡費'){
+    document.querySelectorAll('#card-details-rows .detail-row').forEach(r=>{
+      const n=r.querySelector('input[type=text]').value.trim();
+      const v=parseFloat(r.querySelector('input[type=number]').value)||0;
+      if(n){ details.push({name:n,amount:v}); amount+=v; }
+    });
+    if(!details.length){ alert('請至少輸入一筆卡費細項'); return; }
+  } else {
+    amount = Math.abs(parseFloat(document.getElementById('record-amount').value))||0;
+  }
+  await addDoc(currentCollection(), {month:m,type:t,category:c,amount,details,owner:window.currentOwner});
+  document.getElementById('card-details-rows').innerHTML='';
+  document.getElementById('record-amount').value='';
+  loadRecordsFromCloud();
+}
+
+// 刪除資料
+async function deleteRecordFromList(month, type, idx){
+  const rec=records[month]&&records[month][idx]; if(!rec||!rec._id) return;
+  if(!confirm('確定要刪除這筆？')) return;
+  await deleteDoc(doc(currentCollection(), rec._id));
+  loadRecordsFromCloud();
+}
+
+// 刪除細項
+async function deleteCardDetail(month, ei, di){
+  const rec=records[month]&&records[month][ei]; if(!rec||!rec._id) return;
+  rec.details.splice(di,1);
+  rec.amount=rec.details.reduce((s,d)=>s+d.amount,0);
+  await updateDoc(doc(currentCollection(),rec._id),{details:rec.details,amount:rec.amount});
+  loadRecordsFromCloud();
+}
+
+// 匯入資料
+async function importJSON(e){
+  const f=e.target.files[0]; if(!f)return;
+  try{
+    const txt=await f.text(), data=JSON.parse(txt).records;
+    const allSnap=await getDocs(currentCollection());
+    for(const ds of allSnap.docs) await deleteDoc(doc(currentCollection(), ds.id));
+    for(const o of data){
+      await addDoc(currentCollection(),{
+        month:o.month,type:o.type,category:o.category,amount:o.amount,details:o.details||[],owner:window.currentOwner
+      });
     }
-    document.addEventListener('DOMContentLoaded', loadRecordsFromCloud);
+    await loadRecordsFromCloud(); alert('匯入成功');
+  }catch(err){ alert('匯入失敗：'+err.message); }
+}
 
-    async function addRecord() {
-      const m = document.getElementById('record-month').value;
-      let c = document.getElementById('record-category').value.trim();
-      const t = document.getElementById('record-type').value;
-      if(!m){ alert('請填寫日期'); return; }
-      if(window.currentOwner==='fund') c='結婚基金';
-      if(!c){ alert('請選擇分類'); return; }
-      let details=[], amount=0;
-      if(t==='expense'&&c==='卡費'){
-        document.querySelectorAll('#card-details-rows .detail-row').forEach(r=>{
-          const n=r.querySelector('input[type=text]').value.trim();
-          const v=parseFloat(r.querySelector('input[type=number]').value)||0;
-          if(n){ details.push({name:n,amount:v}); amount+=v; }
-        });
-        if(!details.length){ alert('請至少輸入一筆卡費細項'); return; }
-      } else {
-        amount = Math.abs(parseFloat(document.getElementById('record-amount').value))||0;
-      }
-      await addDoc(collection(db,'records'),{month:m,type:t,category:c,amount,details,owner:window.currentOwner});
-      document.getElementById('card-details-rows').innerHTML=''; document.getElementById('record-amount').value='';
-      loadRecordsFromCloud();
-    }
+// 匯出資料
+async function exportJSON(){
+  const snap = await getDocs(currentCollection());
+  const all = snap.docs.map(d=>d.data());
+  const blob=new Blob([JSON.stringify({records:all},null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`${window.currentOwner}_backup.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-    async function deleteRecordFromList(month,type,idx){
-      const rec=records[month]&&records[month][idx]; if(!rec||!rec._id) return;
-      if(!confirm('確定要刪除這一筆？')) return;
-      await deleteDoc(doc(db,'records',rec._id)); loadRecordsFromCloud();
-    }
-    async function deleteCardDetail(month,ei,di){
-      const rec=records[month]&&records[month][ei]; if(!rec||!rec._id) return;
-      rec.details.splice(di,1); rec.amount=rec.details.reduce((s,d)=>s+d.amount,0);
-      await updateDoc(doc(db,'records',rec._id),{details:rec.details,amount:rec.amount}); loadRecordsFromCloud();
-    }
+window.addRecord=addRecord;
+window.deleteRecordFromList=deleteRecordFromList;
+window.deleteCardDetail=deleteCardDetail;
+window.importJSON=importJSON;
+window.exportJSON=exportJSON;
 
-    async function importJSON(e){
-      const f=e.target.files[0]; if(!f)return;
-      try{
-        const txt=await f.text(), data=JSON.parse(txt).records;
-        const allSnap=await getDocs(collection(db,'records'));
-        for(const ds of allSnap.docs) await deleteDoc(doc(db,'records',ds.id));
-        window.records={};
-        for(const o of data){
-          await addDoc(collection(db,'records'),{
-            month:o.month,type:o.type,category:o.category,amount:o.amount,details:o.details||[],owner:o.owner||window.currentOwner
-          });
-        }
-        await loadRecordsFromCloud(); alert('匯入完成');
-      }catch(err){ console.error(err); alert('匯入失敗：'+err.message); }
-    }
+// 分頁切換時重新讀取資料（加這一段就好）
+document.querySelectorAll('nav.owner-tabs button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelector('nav.owner-tabs button.active').classList.remove('active');
+    btn.classList.add('active');
+    window.currentOwner=btn.dataset.owner;
+    loadRecordsFromCloud(); // 重新載入正確集合的資料
+  });
+});
 
-    function exportJSON(){
-      const all=[]; Object.entries(records).forEach(([m,arr])=>arr.forEach(r=>all.push({
-        month:m,type:r.type,category:r.category,amount:r.amount,details:r.details||[],owner:r.owner
-      })));
-      const blob=new Blob([JSON.stringify({records:all},null,2)],{type:'application/json'});
-      const url=URL.createObjectURL(blob); const a=document.createElement('a');
-      a.href=url; a.download='backup.json'; a.click(); URL.revokeObjectURL(url);
-    }
-
-    window.addRecord=addRecord;
-    window.deleteRecordFromList=deleteRecordFromList;
-    window.deleteCardDetail=deleteCardDetail;
-    window.importJSON=importJSON;
-    window.exportJSON=exportJSON;
   </script>
 
   <!-- UI Script -->

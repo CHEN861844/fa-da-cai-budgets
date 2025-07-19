@@ -1,179 +1,152 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>發大財記帳 + 小新互動</title>
-
-  <!-- Firebase v9 模組化 引入 -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
-    import { getFirestore, collection, getDocs, addDoc, deleteDoc, updateDoc, doc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-
-    // Firebase 配置
-    const firebaseConfig = {
-      apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
-      authDomain: "fa-da-cai-budgets.firebaseapp.com",
-      projectId: "fa-da-cai-budgets",
-      storageBucket: "fa-da-cai-budgets.appspot.com",
-      messagingSenderId: "775217187438",
-      appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
-      measurementId: "G-DZME3R8WF7"
-    };
-
-    // 初始化 Firebase
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const db = getFirestore(app);
-
-    // 全局 records
-    window.records = {};
-
-    // 載入雲端資料
-    async function loadRecordsFromCloud() {
-      const snap = await getDocs(collection(db, 'records'));
-      records = {};
-      snap.forEach(s => {
-        const o = s.data(); o._id = s.id;
-        if (!records[o.month]) records[o.month] = [];
-        records[o.month].push(o);
-      });
-      renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
-    }
-    document.addEventListener('DOMContentLoaded', loadRecordsFromCloud);
-
-    // 新增記錄
-    async function addRecord() {
-      const m = document.getElementById('record-month').value;
-      const t = document.getElementById('record-type').value;
-      const c = document.getElementById('record-category').value.trim();
-      if (!m || !c) { alert('請填寫日期與分類'); return; }
-      let details = [], amount = 0;
-      if (t === 'expense' && c === '卡費') {
-        document.querySelectorAll('#card-details-rows .detail-row').forEach(r => {
-          const name = r.querySelector('input[type=text]').value.trim();
-          const val = parseFloat(r.querySelector('input[type=number]').value) || 0;
-          if (name) { details.push({ name, amount: val }); amount += val; }
-        });
-        if (!details.length) { alert('請至少輸入一筆卡費細項'); return; }
-      } else {
-        amount = Math.abs(parseFloat(document.getElementById('record-amount').value)) || 0;
-      }
-      const payload = { month: m, type: t, category: c, amount, details };
-      await addDoc(collection(db, 'records'), payload);
-      document.getElementById('card-details-rows').innerHTML = '';
-      document.getElementById('record-amount').value = '';
-      loadRecordsFromCloud();
-    }
-
-    // 刪除記錄
-    async function deleteRecordFromList(month, type, idx) {
-      const rec = records[month] && records[month][idx];
-      if (!rec || !rec._id) return;
-      if (!confirm('確定要刪除這一筆？')) return;
-      await deleteDoc(doc(db, 'records', rec._id));
-      loadRecordsFromCloud();
-    }
-
-    // 刪除卡費細項
-    async function deleteCardDetail(month, expIdx, detailIdx) {
-      const rec = records[month] && records[month][expIdx];
-      if (!rec || !rec._id) return;
-      rec.details.splice(detailIdx, 1);
-      rec.amount = rec.details.reduce((s, d) => s + d.amount, 0);
-      await updateDoc(doc(db, 'records', rec._id), { details: rec.details, amount: rec.amount });
-      loadRecordsFromCloud();
-    }
-
-    // 匯入 JSON (同步到 Firestore)
-    async function importJSON(e) {
-      const file = e.target.files[0]; if (!file) return;
-      const text = await file.text();
-      try {
-        const data = JSON.parse(text).records;
-        for (const o of data) {
-          const payload = { month: o.month, type: o.type, category: o.category, amount: o.amount, details: o.details || [] };
-          await addDoc(collection(db, 'records'), payload);
-        }
-        loadRecordsFromCloud();
-      } catch (err) { alert('匯入失敗: ' + err); }
-    }
-
-    // 匯出 JSON
-    function exportJSON() {
-      const all = [];
-      Object.entries(records).forEach(([m, arr]) => arr.forEach(r => {
-        const copy = { month: m, type: r.type, category: r.category, amount: r.amount, details: r.details || [] };
-        all.push(copy);
-      }));
-      const blob = new Blob([JSON.stringify({ records: all }, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = 'backup.json'; a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    // 綁定全局
-    window.addRecord = addRecord;
-    window.deleteRecordFromList = deleteRecordFromList;
-    window.deleteCardDetail = deleteCardDetail;
-    window.importJSON = importJSON;
-    window.exportJSON = exportJSON;
-  </script>
-
   <style>
-    /* 原完整 CSS 如前面，無省略 */
+    /* ---------- 原始 CSS 開始（桌機與手機共用） ---------- */
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-    body { margin: 0; padding: 1rem; background: url('bg.jpg') no-repeat center center fixed; background-size: cover; overflow-x: hidden; color: #333; }
-    h1 { text-align: center; color: #f44336; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
-    .year-switcher { max-width: 900px; margin: 1rem auto; display: flex; align-items: center; gap: 0.5rem; }
-    .summary { display: flex; justify-content: center; gap: 1rem; margin: 2rem auto; flex-wrap: wrap; }
-    .card { background: rgba(255,255,255,0.7); padding: 1rem; border-radius: 1rem; width: 220px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
-    .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
-    .big-shadow-num { font-size: 2.3rem; font-weight: bold; text-shadow: 1.5px 1.5px 4px rgba(0,0,0,0.15); letter-spacing: 1px; }
-    .form-section { max-width: 900px; margin: 1rem auto; background: rgba(255,255,255,0.7); padding: 1rem; border-radius: 1rem; }
-    .form-section h2 { text-align: center; }
-    .form-section > div { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .form-section input, .form-section select, .form-section button { flex: 1; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid #ccc; }
-    .icon-btn, .delete-btn, .expand-btn { background: transparent!important; border: none!important; padding: 0; margin: 0; cursor: pointer; }
-    .category-row { display: flex; align-items: center; gap: 0.5em; flex: 1.3; }
-    .category-row select { flex: 2; }
-    .category-row button { flex: none; }
-    .add-category-row { display: flex; gap: 0.3em; align-items: center; margin-top: 0.3em; }
-    .add-category-row input { flex: 2; }
-    .add-category-row button { flex: none; }
-    .card-details-form { width: 100%; background: #fffde7; border-radius: 0.5rem; margin: 0.5em 0; padding: 0.7em 1em; }
-    .card-details-form h4 { margin: 0 0 0.5em; }
-    .card-details-form .detail-row { display: flex; gap: 0.4em; margin-bottom: 0.5em; align-items: center; }
-    .card-details-form input[type=text] { flex: 2; }
-    .card-details-form input[type=number] { flex: 1.2; }
-    .card-details-form button.add-detail-btn { background: #007f0e; color: #fff; border-radius: 0.3em; padding: 0 0.7em; }
-    .import-export { max-width: 250px; float: right; margin-top: -7rem; background: rgba(255,255,255,0.7); padding: 1rem; border-radius: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    .monthly-records { max-width: 900px; margin: 2rem auto; }
-    .month-box { background: rgba(230,245,255,0.7); border-radius: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 1rem; margin-bottom: 2rem; }
-    .month-box:nth-child(even) { background: rgba(230,255,230,0.7); }
-    .month-details { display: flex; gap: 1rem; margin-top: 1rem; }
-    .month-column { flex: 1; padding: 0.5rem; display: flex; flex-direction: column; justify-content: flex-start; border-right: 1px solid #ccc; }
-    .month-column:last-child { border-right: none; }
-    .month-column h4 { margin: 0 0 0.25rem; }
-    .month-column ul, .month-column .exp-list { list-style: none; padding: 0; margin: 0; }
-    .month-column li { display: flex; align-items: center; justify-content: space-between; padding: 0.25rem 0; }
-    .expense-item-group { display: block; }
-    .card-detail-list { margin: 0.5em 0 0.6em 2em; padding-left: 1em; border-left: 2.5px solid #b3cdd1; overflow: hidden; max-height: 0; transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1); }
-    .card-detail-list.open { max-height: 600px; transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1); }
-    .card-detail-list ul { margin: 0; padding: 0; list-style: none; }
-    .card-detail-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.17em 0; }
-    .month-totals { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1rem; background: rgba(255,255,255,0.6); padding: 0.75rem; border-radius: 0.75rem; box-shadow: 0 2px 6px rgba(0,0,0,0.1); border-top: 1px solid #ccc; }
-    .month-total { flex: 1; text-align: center; font-weight:bold; }
+    body { margin:0; padding:1rem; background:url('bg.jpg') no-repeat center center fixed; background-size:cover; overflow-x:hidden; color:#333; }
+    h1 { text-align:center; color:#f44336; text-shadow:1px 1px 2px rgba(0,0,0,0.2); }
+    .year-switcher { max-width:900px; margin:1rem auto; display:flex; align-items:center; gap:0.5rem; }
+    .summary { display:flex; justify-content:center; gap:1rem; margin:2rem auto; flex-wrap:wrap; }
+    .card { background:rgba(255,255,255,0.7); padding:1rem; border-radius:1rem; width:220px; text-align:center; box-shadow:0 4px 8px rgba(0,0,0,0.15); }
+    .card:hover { transform:translateY(-4px); box-shadow:0 8px 16px rgba(0,0,0,0.2); }
+    .big-shadow-num { font-size:2.3rem; font-weight:bold; text-shadow:1.5px 1.5px 4px rgba(0,0,0,0.15); letter-spacing:1px; }
+    .form-section { max-width:900px; margin:1rem auto; background:rgba(255,255,255,0.7); padding:1rem; border-radius:1rem; }
+    .form-section h2 { text-align:center; }
+    .form-section>div { display:flex; gap:0.5rem; flex-wrap:wrap; }
+    .form-section input, .form-section select, .form-section button { flex:1; padding:0.5rem; border-radius:0.5rem; border:1px solid #ccc; }
+    .icon-btn, .delete-btn, .expand-btn { background:transparent!important; border:none!important; padding:0; margin:0; cursor:pointer; }
+    .category-row { display:flex; align-items:center; gap:0.5em; flex:1.3; }
+    .category-row select { flex:2; }
+    .category-row button { flex:none; }
+    .add-category-row { display:flex; gap:0.3em; align-items:center; margin-top:0.3em; }
+    .add-category-row input { flex:2; }
+    .add-category-row button { flex:none; }
+    .card-details-form { width:100%; background:#fffde7; border-radius:0.5rem; margin:0.5em 0; padding:0.7em 1em; }
+    .card-details-form h4 { margin:0 0 0.5em; }
+    .card-details-form .detail-row { display:flex; gap:0.4em; margin-bottom:0.5em; align-items:center; }
+    .card-details-form input[type=text] { flex:2; }
+    .card-details-form input[type=number] { flex:1.2; }
+    .card-details-form button.remove-detail-btn { background:transparent!important; border:none!important; cursor:pointer; font-size:1.2rem; }
+    .import-export { max-width:250px; float:right; margin-top:-7rem; background:rgba(255,255,255,0.7); padding:1rem; border-radius:1rem; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+    .monthly-records { max-width:900px; margin:2rem auto; }
+    .month-box { background:rgba(230,245,255,0.7); border-radius:1rem; box-shadow:0 2px 8px rgba(0,0,0,0.1); padding:1rem; margin-bottom:2rem; }
+    .month-box:nth-child(even) { background:rgba(230,255,230,0.7); }
+    .month-details { display:flex; gap:1rem; margin-top:1rem; }
+    .month-column { flex:1; padding:0.5rem; display:flex; flex-direction:column; justify-content:flex-start; border-right:1px solid #ccc; }
+    .month-column:last-child { border-right:none; }
+    .month-column h4 { margin:0 0 0.25rem; }
+    .month-column ul, .month-column .exp-list { list-style:none; padding:0; margin:0; }
+    .month-column li { display:flex; align-items:center; justify-content:space-between; padding:0.25rem 0; }
+    .expense-item-group { display:block; }
+    .card-detail-list { margin:0.5em 0 0.6em 2em; padding-left:1em; border-left:2.5px solid #b3cdd1; overflow:hidden; max-height:0; transition:max-height 0.35s cubic-bezier(0.4,0,0.2,1); }
+    .card-detail-list.open { max-height:600px; transition:max-height 0.45s cubic-bezier(0.4,0,0.2,1); }
+    .card-detail-list ul { margin:0; padding:0; list-style:none; }
+    .card-detail-list li { display:flex; justify-content:space-between; align-items:center; padding:0.17em 0; }
+    .month-totals { display:flex; justify-content:space-between; gap:1rem; margin-top:1rem; background:rgba(255,255,255,0.6); padding:0.75rem; border-radius:0.75rem; box-shadow:0 2px 6px rgba(0,0,0,0.1); border-top:1px solid #ccc; }
+    .month-total { flex:1; text-align:center; font-weight:bold; }
     .red { color:#f44336; } .green { color:#007f0e; }
-    #shin-icon { position: fixed; bottom:20px; right:20px; width:200px; animation: float 3s infinite; cursor:pointer; z-index:1000; }
-    #shin-dialog { position: fixed; bottom:320px; right:20px; background:rgba(255,249,196,0.95); padding:0.75rem 1rem; border-radius:1rem; box-shadow:0 0 6px rgba(0,0,0,0.2); font-size:14px; max-width:200px; z-index:999; }
+    #shin-icon { position:fixed; bottom:20px; right:20px; width:200px; animation:float 3s infinite; cursor:pointer; z-index:1000; }
+    #shin-dialog { position:fixed; bottom:320px; right:20px; background:rgba(255,249,196,0.95); padding:0.75rem 1rem; border-radius:1rem; box-shadow:0 0 6px rgba(0,0,0,0.2); font-size:14px; max-width:200px; z-index:999; }
     #shin-dialog::after { content:""; position:absolute; bottom:-12px; right:20px; border:10px solid transparent; border-top-color:rgba(255,249,196,0.95); }
     @keyframes float { 0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);} }
+    /* ---------- 原始 CSS 結束 ---------- */
+
+    /* 帳本切換按鈕 */
+    .owner-tabs { display:flex; justify-content:center; gap:1rem; margin:1rem auto; }
+    .owner-tabs button { padding:0.5rem 1rem; border:none; border-radius:1rem; background:rgba(255,255,255,0.7); cursor:pointer; font-weight:bold; transition:background 0.3s; }
+    .owner-tabs button.active { background:#f44336; color:#fff; }
+    .owner-tabs button:not(.active):hover { background:rgba(244,67,54,0.8); color:#fff; }
+
+    /* 預設隱藏 FAB，桌機不會看到 */
+    #fab-add { display:none; }
+
+    /* 手機專屬：螢幕 ≤600px 時才套用以下 */
+    @media (max-width:600px) {
+    /* 隱藏匯入/匯出區塊 */
+    .import-export {
+      display: none !important;
+    }
+    /* 隱藏小新浮動與對話框 */
+    #shin-icon,
+    #shin-dialog {
+      display: none !important;
+    }
+      /* Floating Action Button */
+      #fab-add {
+        display:block;
+        position:fixed;
+        bottom:70px;
+        right:16px;
+        width:56px;
+        height:56px;
+        border-radius:50%;
+        background:#f44336;
+        color:#fff;
+        font-size:2rem;
+        border:none;
+        box-shadow:0 4px 8px rgba(0,0,0,0.2);
+        z-index:1001;
+      }
+
+      /* Accordion for 月份明細 */
+      .month-box .month-details,
+      .month-box .month-totals {
+        display:none;
+      }
+      .month-box.open .month-details,
+      .month-box.open .month-totals {
+        display:block;
+      }
+
+      /* Sticky header for 切換與年份 */
+      nav.owner-tabs,
+      .year-switcher {
+        position:sticky;
+        top:0;
+        background:rgba(255,255,255,0.9);
+        z-index:500;
+      }
+
+      /* 卡片改成單欄排版 */
+      .summary .card,
+      #month-overview-cards > div {
+        width:90% !important;
+        margin:0.5rem auto;
+      }
+      .month-box { width:100% !important; }
+
+      /* 表單直排 */
+      .form-section > div { flex-direction:column !important; }
+      .form-section input, .form-section select, .form-section button {
+        width:100% !important;
+      }
+
+      /* 切換按鈕換行 */
+      .owner-tabs {
+        flex-wrap:wrap;
+        gap:0.5rem;
+      }
+      .owner-tabs button {
+        flex:1 1 30%;
+        font-size:0.9rem;
+      }
+
+      body { padding:0.5rem; }
+    }
   </style>
 </head>
 <body>
   <h1>💰 發大財記帳系統 💰</h1>
+  <nav class="owner-tabs">
+    <button data-owner="me" class="active">我的帳本</button>
+    <button data-owner="wife">老婆的帳本</button>
+    <button data-owner="fund">結婚基金</button>
+  </nav>
+
   <div class="year-switcher">
     <label for="year-select">選擇年份：</label>
     <select id="year-select"></select>
@@ -183,237 +156,270 @@
     <div class="card"><h2>總支出</h2><p id="total-expense" class="green big-shadow-num">$0</p></div>
     <div class="card"><h2>結餘</h2><p id="total-balance" class="red big-shadow-num">$0</p></div>
   </div>
+
   <div class="form-section">
     <h2>新增月度記錄</h2>
     <div>
-      <input type="month" id="record-month" />
+      <input type="month" id="record-month"/>
       <select id="record-type">
         <option value="income">收入</option>
         <option value="expense">支出</option>
       </select>
       <span class="category-row">
         <select id="record-category"></select>
-        <button onclick="showAddCategory()">＋</button>
-        <button class="icon-btn" onclick="showDeleteCategory()">🗑️</button>
+        <button type="button" onclick="showAddCategory()">＋</button>
+        <button type="button" class="icon-btn" onclick="showDeleteCategory()">🗑️</button>
       </span>
-      <input type="number" id="record-amount" placeholder="金額" />
-      <button onclick="addRecord()">新增</button>
+      <input type="number" id="record-amount" placeholder="金額"/>
+      <button type="button" onclick="addRecord()">新增</button>
     </div>
     <div id="add-category-row" class="add-category-row" style="display:none;">
-      <input type="text" id="new-category-name" placeholder="輸入新分類名稱" />
-      <button onclick="addCategory()">新增</button>
-      <button onclick="hideAddCategory()">取消</button>
+      <input type="text" id="new-category-name" placeholder="輸入新分類名稱"/>
+      <button type="button" onclick="addCategory()">新增</button>
+      <button type="button" onclick="hideAddCategory()">取消</button>
     </div>
     <div id="delete-category-row" class="add-category-row" style="display:none;">
       <select id="del-category-select"></select>
-      <button onclick="deleteCategory()">刪除</button>
-      <button onclick="hideDeleteCategory()">取消</button>
+      <button type="button" onclick="deleteCategory()">刪除</button>
+      <button type="button" onclick="hideDeleteCategory()">取消</button>
     </div>
     <div id="card-details-form" class="card-details-form" style="display:none;">
       <h4>卡費細項</h4>
       <div id="card-details-rows"></div>
-      <button class="add-detail-btn" onclick="addCardDetailRow()">＋新增細項</button>
+      <button type="button" class="add-detail-btn" id="add-detail-btn">＋新增細項</button>
     </div>
   </div>
+
   <div class="import-export">
     <h3>資料管理</h3>
-    <input type="file" accept=".json" onchange="importJSON(event)" />
-    <button onclick="exportJSON()">匯出 JSON</button>
+    <input type="file" accept=".json" onchange="importJSON(event)"/>
+    <button type="button" onclick="exportJSON()">匯出 JSON</button>
   </div>
+
   <div id="month-overview" class="monthly-records">
     <h2 style="text-align:center;">📊 月份總覽</h2>
     <div id="month-overview-cards" style="display:flex;flex-wrap:wrap;gap:1rem;"></div>
   </div>
   <div id="monthly-records" class="monthly-records"></div>
 
-  <img id="shin-icon" src="1.png" alt="小新浮動" />
+  <!-- Floating Action Button（桌機隱藏，手機顯示） -->
+  <button id="fab-add">＋</button>
+
+  <img id="shin-icon" src="1.png" alt="小新浮動"/>
   <div id="shin-dialog">小新提醒：今天有記帳嗎？</div>
 
-  <script>
-    // UI 邏輯（已移除 localStorage）
-    const pics = ['1.png','2.png','3.png','4.png','5.jpg','6.jpg'];
-    const messages = [
-      "小新提醒：今天有記帳嗎？","記得定期記帳，發大財唷～💰",
-      "控制支出，每天進步一點！","保持習慣，小心不亂花～","賺錢不難，記帳才難。"
-    ];
-    let picIndex = 0, msgIndex = 0;
-    document.getElementById('shin-icon').onclick = () => {
-      picIndex = (picIndex + 1) % pics.length;
-      document.getElementById('shin-icon').src = pics[picIndex];
+  <!-- Module Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics.js";
+    import {
+      getFirestore, collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, where
+    } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    // Firebase 配置（請保留）
+    const firebaseConfig = {
+      apiKey: "AIzaSyA5eU9ASQCGJweHaAW0pUGDzoNpSZXrcnw",
+      authDomain: "fa-da-cai-budgets.firebaseapp.com",
+      projectId: "fa-da-cai-budgets",
+      storageBucket: "fa-da-cai-budgets.appspot.com",
+      messagingSenderId: "775217187438",
+      appId: "1:775217187438:web:267bdbda0c6e3deab0b47f",
+      measurementId: "G-DZME3R8WF7"
     };
-    setInterval(() => {
-      msgIndex = (msgIndex + 1) % messages.length;
-      document.getElementById('shin-dialog').textContent = messages[msgIndex];
-    }, 5000);
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getFirestore(app);
 
-    let customIncomeCategories = [], customExpenseCategories = [];
-    let hiddenIncomeCategories = [], hiddenExpenseCategories = [];
+    window.records = {};
+    window.currentOwner = 'me';
 
-    function getAllCategoriesFromRecords(type) {
-      const arr = Object.values(records).flat()
-        .filter(r => r.type === type)
-        .map(r => r.category);
-      const base = arr.concat(type === 'income' ? customIncomeCategories : customExpenseCategories);
-      const unique = Array.from(new Set(base));
-      const hidden = type === 'income' ? hiddenIncomeCategories : hiddenExpenseCategories;
-      return unique.filter(c => !hidden.includes(c));
+    async function loadRecordsFromCloud() {
+      const snap = await getDocs(collection(db,'records'));
+      records = {};
+      snap.forEach(s=>{ const o=s.data(); o._id=s.id; if(!records[o.month]) records[o.month]=[]; records[o.month].push(o); });
+      renderYearSelect(); updateUI(); renderCategorySelect(); checkCardDetailForm();
+    }
+    document.addEventListener('DOMContentLoaded', loadRecordsFromCloud);
+
+    async function addRecord() {
+      const m = document.getElementById('record-month').value;
+      let c = document.getElementById('record-category').value.trim();
+      const t = document.getElementById('record-type').value;
+      if(!m){ alert('請填寫日期'); return; }
+      if(window.currentOwner==='fund') c='結婚基金';
+      if(!c){ alert('請選擇分類'); return; }
+      let details=[], amount=0;
+      if(t==='expense'&&c==='卡費'){
+        document.querySelectorAll('#card-details-rows .detail-row').forEach(r=>{
+          const n=r.querySelector('input[type=text]').value.trim();
+          const v=parseFloat(r.querySelector('input[type=number]').value)||0;
+          if(n){ details.push({name:n,amount:v}); amount+=v; }
+        });
+        if(!details.length){ alert('請至少輸入一筆卡費細項'); return; }
+      } else {
+        amount = Math.abs(parseFloat(document.getElementById('record-amount').value))||0;
+      }
+      await addDoc(collection(db,'records'),{month:m,type:t,category:c,amount,details,owner:window.currentOwner});
+      document.getElementById('card-details-rows').innerHTML=''; document.getElementById('record-amount').value='';
+      loadRecordsFromCloud();
     }
 
-    function renderCategorySelect() {
-      const sel = document.getElementById("record-category");
-      const type = document.getElementById("record-type").value;
-      sel.innerHTML = getAllCategoriesFromRecords(type)
-        .map(c => `<option value="${c}">${c}</option>`).join('');
+    async function deleteRecordFromList(month,type,idx){
+      const rec=records[month]&&records[month][idx]; if(!rec||!rec._id) return;
+      if(!confirm('確定要刪除這一筆？')) return;
+      await deleteDoc(doc(db,'records',rec._id)); loadRecordsFromCloud();
+    }
+    async function deleteCardDetail(month,ei,di){
+      const rec=records[month]&&records[month][ei]; if(!rec||!rec._id) return;
+      rec.details.splice(di,1); rec.amount=rec.details.reduce((s,d)=>s+d.amount,0);
+      await updateDoc(doc(db,'records',rec._id),{details:rec.details,amount:rec.amount}); loadRecordsFromCloud();
+    }
+
+    async function importJSON(e){
+      const f=e.target.files[0]; if(!f)return;
+      try{
+        const txt=await f.text(), data=JSON.parse(txt).records;
+        const allSnap=await getDocs(collection(db,'records'));
+        for(const ds of allSnap.docs) await deleteDoc(doc(db,'records',ds.id));
+        window.records={};
+        for(const o of data){
+          await addDoc(collection(db,'records'),{
+            month:o.month,type:o.type,category:o.category,amount:o.amount,details:o.details||[],owner:o.owner||window.currentOwner
+          });
+        }
+        await loadRecordsFromCloud(); alert('匯入完成');
+      }catch(err){ console.error(err); alert('匯入失敗：'+err.message); }
+    }
+
+    function exportJSON(){
+      const all=[]; Object.entries(records).forEach(([m,arr])=>arr.forEach(r=>all.push({
+        month:m,type:r.type,category:r.category,amount:r.amount,details:r.details||[],owner:r.owner
+      })));
+      const blob=new Blob([JSON.stringify({records:all},null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob); const a=document.createElement('a');
+      a.href=url; a.download='backup.json'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    window.addRecord=addRecord;
+    window.deleteRecordFromList=deleteRecordFromList;
+    window.deleteCardDetail=deleteCardDetail;
+    window.importJSON=importJSON;
+    window.exportJSON=exportJSON;
+  </script>
+
+  <!-- UI Script -->
+  <script>
+    // 小新互動
+    const pics=['1.png','2.png','3.png','4.png','5.jpg','6.jpg'],
+          messages=["小新提醒：今天有記帳嗎？","記得定期記帳，發大財唷～💰","控制支出，每天進步一點！","保持習慣，小心不亂花～","賺錢不難，記帳才難。"];
+    let picIndex=0,msgIndex=0;
+    document.getElementById('shin-icon').onclick=()=>{
+      picIndex=(picIndex+1)%pics.length;
+      document.getElementById('shin-icon').src=pics[picIndex];
+    };
+    setInterval(()=>{
+      msgIndex=(msgIndex+1)%messages.length;
+      document.getElementById('shin-dialog').textContent=messages[msgIndex];
+    },5000);
+
+    // 分類 & 明細
+    let customIncomeCategories=[],customExpenseCategories=[],hiddenIncomeCategories=[],hiddenExpenseCategories=[];
+    function getAllCategoriesFromRecords(type){
+      const arr=Object.values(records).flat().filter(r=>r.type===type).map(r=>r.category);
+      const base=arr.concat(type==='income'?customIncomeCategories:customExpenseCategories);
+      return Array.from(new Set(base)).filter(c=>(type==='income'?hiddenIncomeCategories:hiddenExpenseCategories).indexOf(c)<0);
+    }
+    function renderCategorySelect(){
+      const sel=document.getElementById('record-category');
+      if(window.currentOwner==='fund'){
+        sel.innerHTML=`<option value="結婚基金">結婚基金</option>`;
+        document.getElementById('card-details-form').style.display='none'; return;
+      }
+      const type=document.getElementById('record-type').value;
+      sel.innerHTML=getAllCategoriesFromRecords(type).map(c=>`<option value="${c}">${c}</option>`).join('');
       checkCardDetailForm();
     }
+    function showAddCategory(){document.getElementById('add-category-row').style.display='';document.getElementById('delete-category-row').style.display='none';}
+    function hideAddCategory(){document.getElementById('add-category-row').style.display='none';document.getElementById('new-category-name').value='';}
+    function addCategory(){const n=document.getElementById('new-category-name').value.trim(),t=document.getElementById('record-type').value; if(n){if(t==='income'&&!customIncomeCategories.includes(n))customIncomeCategories.push(n);if(t==='expense'&&!customExpenseCategories.includes(n))customExpenseCategories.push(n);renderCategorySelect();document.getElementById('record-category').value=n;}hideAddCategory();checkCardDetailForm();}
+    function showDeleteCategory(){document.getElementById('add-category-row').style.display='none';document.getElementById('delete-category-row').style.display='';const t=document.getElementById('record-type').value;document.getElementById('del-category-select').innerHTML=getAllCategoriesFromRecords(t).map(c=>`<option value="${c}">${c}</option>`).join('');}
+    function deleteCategory(){const t=document.getElementById('record-type').value,c=document.getElementById('del-category-select').value; if(!confirm(`確定要移除「${c}」分類？`))return; if(t==='income'){hiddenIncomeCategories.push(c);customIncomeCategories=customIncomeCategories.filter(v=>v!==c);}else{hiddenExpenseCategories.push(c);customExpenseCategories=customExpenseCategories.filter(v=>v!==c);}renderCategorySelect();hideDeleteCategory();}
+    function hideDeleteCategory(){document.getElementById('delete-category-row').style.display='none';}
+    function checkCardDetailForm(){const t=document.getElementById('record-type').value,cat=document.getElementById('record-category').value.trim();document.getElementById('card-details-form').style.display=(t==='expense'&&cat==='卡費')?'':'none';}
 
-    function showAddCategory() {
-      document.getElementById('add-category-row').style.display = '';
-      document.getElementById('delete-category-row').style.display = 'none';
-    }
-    function hideAddCategory() {
-      document.getElementById('add-category-row').style.display = 'none';
-      document.getElementById('new-category-name').value = '';
-    }
-    function addCategory() {
-      const n = document.getElementById('new-category-name').value.trim();
-      const type = document.getElementById('record-type').value;
-      if (n) {
-        if (type === 'income' && !customIncomeCategories.includes(n)) customIncomeCategories.push(n);
-        if (type === 'expense' && !customExpenseCategories.includes(n)) customExpenseCategories.push(n);
-        renderCategorySelect();
-        document.getElementById('record-category').value = n;
-      }
-      hideAddCategory(); checkCardDetailForm();
-    }
+    function addCardDetailRow(n='',a=''){const ctr=document.getElementById('card-details-rows'),row=document.createElement('div');row.className='detail-row';row.innerHTML=`<input type="text" placeholder="名稱" value="${n}"><input type="number" placeholder="金額" value="${a}"><button type="button" class="remove-detail-btn">🗑️</button>`;ctr.appendChild(row);}
+    document.getElementById('add-detail-btn').addEventListener('click',()=>addCardDetailRow());
+    document.getElementById('card-details-rows').addEventListener('click',e=>{if(e.target.matches('.remove-detail-btn'))e.target.closest('.detail-row').remove();});
 
-    function showDeleteCategory() {
-      document.getElementById('add-category-row').style.display = 'none';
-      document.getElementById('delete-category-row').style.display = '';
-      const type = document.getElementById('record-type').value;
-      document.getElementById('del-category-select').innerHTML =
-        getAllCategoriesFromRecords(type)
-        .map(c => `<option value="${c}">${c}</option>`).join('');
-    }
-    function deleteCategory() {
-      const type = document.getElementById('record-type').value;
-      const c = document.getElementById('del-category-select').value;
-      if (!confirm(`確定要從選單移除「${c}」這個分類嗎？`)) return;
-      if (type === 'income') {
-        hiddenIncomeCategories.push(c);
-        customIncomeCategories = customIncomeCategories.filter(v => v !== c);
-      } else {
-        hiddenExpenseCategories.push(c);
-        customExpenseCategories = customExpenseCategories.filter(v => v !== c);
-      }
-      renderCategorySelect(); hideDeleteCategory();
-    }
-    function hideDeleteCategory() { document.getElementById('delete-category-row').style.display = 'none'; }
+    document.getElementById('record-type').addEventListener('change',renderCategorySelect);
+    document.getElementById('record-category').addEventListener('change',checkCardDetailForm);
 
-    function checkCardDetailForm() {
-      const type = document.getElementById('record-type').value;
-      const cat  = document.getElementById('record-category').value.trim();
-      document.getElementById('card-details-form').style.display =
-        (type==='expense'&&cat==='卡費') ? '' : 'none';
-    }
+    function renderYearSelect(){const s=document.getElementById('year-select'),yrs=Array.from(new Set(Object.keys(records).map(m=>m.split('-')[0])));yrs.sort().reverse();s.innerHTML=yrs.map(y=>`<option value="${y}">${y}年</option>`).join('');if(!s.value&&yrs.length)s.value=yrs[0];}
+    document.getElementById('year-select').addEventListener('change',updateUI);
 
-    function addCardDetailRow(name = '', amount = '') {
-      const ctr = document.getElementById('card-details-rows');
-      const row = document.createElement('div'); row.className = 'detail-row';
-      row.innerHTML = `
-        <input type="text" placeholder="名稱" value="${name}">
-        <input type="number" placeholder="金額" value="${amount}">
-        <button class="icon-btn" onclick="this.parentNode.remove()">🗑️</button>
-      `;
-      ctr.appendChild(row);
-    }
-
-    document.getElementById('record-type').addEventListener('change', renderCategorySelect);
-    document.getElementById('record-category').addEventListener('change', checkCardDetailForm);
-
-    function renderYearSelect() {
-      const s = document.getElementById('year-select');
-      const yrs = Array.from(new Set(Object.keys(records).map(m => m.split('-')[0])));
-      yrs.sort().reverse();
-      s.innerHTML = yrs.map(y => `<option value="${y}">${y}年</option>`).join('');
-      if (!s.value && yrs.length) s.value = yrs[0];
-    }
-    document.getElementById('year-select').addEventListener('change', updateUI);
-
-    function getAbs(v) { return Math.abs(Number(v) || 0); }
-
-    function updateUI() {
-      const prev = document.getElementById('year-select').value;
-      renderYearSelect(); document.getElementById('year-select').value = prev;
-      const year = prev;
-      const overviewCont = document.getElementById('month-overview-cards');
-      const cont = document.getElementById('monthly-records');
-      overviewCont.innerHTML = '';
-      cont.innerHTML = '';
-
-      const monthKeys = Object.keys(records).filter(m => m.startsWith(year + '-')).sort();
-      const all = monthKeys.flatMap(m => records[m]);
-      const totalIncome = all.filter(r => r.type === 'income').reduce((s,r) => s + getAbs(r.amount), 0);
-      const totalExpense = all.filter(r => r.type === 'expense').reduce((s,r) => s + getAbs(r.amount), 0);
-      const balance = totalIncome - totalExpense;
-      document.getElementById('total-income').textContent = `$${totalIncome.toLocaleString()}`;
-      document.getElementById('total-expense').textContent = `$${totalExpense.toLocaleString()}`;
-      document.getElementById('total-balance').textContent = `$${balance.toLocaleString()}`;
-      document.getElementById('total-balance').className = balance>=0? 'red big-shadow-num':'green big-shadow-num';
-
-      let cumulative = 0;
-      monthKeys.forEach(month => {
-        const entries = records[month];
-        const incomes = entries.filter(r => r.type==='income');
-        const expenses = entries.filter(r => r.type==='expense');
-        const sumIncome = incomes.reduce((s,r) => s + getAbs(r.amount), 0);
-        const sumExpense = expenses.reduce((s,r) => s + getAbs(r.amount), 0);
-        cumulative += (sumIncome - sumExpense);
-
-        const card = document.createElement('div'); Object.assign(card.style, {
-          background:'rgba(230,245,255,0.7)', borderRadius:'1rem', boxShadow:'0 2px 6px rgba(0,0,0,0.1)', padding:'1rem', width:'22%'
-        });
-        card.innerHTML = `
-          <h4 style="text-align:center;">${month}</h4>
-          <p>收入：<span class="red" style="font-weight:bold;">$${sumIncome.toLocaleString()}</span></p>
-          <p>支出：<span class="green" style="font-weight:bold;">$${sumExpense.toLocaleString()}</span></p>
-          <hr style="margin:0.5rem 0;">
-          <div style="margin-top:0.5rem;font-weight:bold;">
-            累積結餘：<span style="color:${cumulative>=0?'#f44336':'#007f0e'};">$${cumulative.toLocaleString()}</span>
-          </div>
-        `;
-        overviewCont.appendChild(card);
-
-        let html = `
-        <div class="month-box">
-          <h3>${month}</h3>
-          <div class="month-details">
-            <div class="month-column">
-              <h4>💰 收入</h4><ul>`;
-        incomes.forEach((r,idx) => {
-          html += `<li><span>${r.category}</span><span><span class="red" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','income',${idx})">🗑️</button></span></li>`;
-        });
-        html += `</ul></div><div class="month-column"><h4>💸 支出</h4><ul class="exp-list">`;
-        expenses.forEach((r,idx) => {
-          if(r.category==='卡費' && Array.isArray(r.details) && r.details.length) {
-            html += `<li class="expense-item-group"><div style="display:flex;align-items:center;"><span>卡費</span><button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button></div><div class="card-detail-list"><ul>`;
-            r.details.forEach((d,didx) => {
-              html += `<li style="display:flex;align-items:center;"><span>${d.name}</span><span style="margin:0 0.5em;"><span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteCardDetail('${month}',${idx},${didx})">🗑️</button></span></li>`;
-            });
-            html += `</ul></div><div style="display:flex;align-items:center;"><span class="green" style="font-weight:bold;margin-left:auto;">$${getAbs(r.amount).toLocaleString()}&nbsp;</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button></div></li>`;
+    function getAbs(v){return Math.abs(Number(v)||0);}
+    function updateUI(){
+      const prev=document.getElementById('year-select').value;renderYearSelect();document.getElementById('year-select').value=prev;const year=prev;
+      const overview=document.getElementById('month-overview-cards'),cont=document.getElementById('monthly-records');overview.innerHTML='';cont.innerHTML='';
+      let filterFunc; if(window.currentOwner==='fund')filterFunc=r=>r.category==='結婚基金';else filterFunc=r=>r.owner===window.currentOwner;
+      const monthKeys=Object.keys(records).filter(m=>m.startsWith(year+'-')).sort();
+      const all=monthKeys.flatMap(m=>(records[m]||[]).filter(filterFunc));
+      const ti=all.filter(r=>r.type==='income').reduce((s,r)=>s+getAbs(r.amount),0);
+      const te=all.filter(r=>r.type==='expense').reduce((s,r)=>s+getAbs(r.amount),0);
+      const bal=ti-te;
+      document.getElementById('total-income').textContent=`$${ti.toLocaleString()}`;
+      document.getElementById('total-expense').textContent=`$${te.toLocaleString()}`;
+      document.getElementById('total-balance').textContent=`$${bal.toLocaleString()}`;
+      document.getElementById('total-balance').className=bal>=0?'red big-shadow-num':'green big-shadow-num';
+      let cum=0; monthKeys.forEach(month=>{
+        const es=(records[month]||[]).filter(filterFunc);
+        const inc=es.filter(r=>r.type==='income'),exp=es.filter(r=>r.type==='expense');
+        const si=inc.reduce((s,r)=>s+getAbs(r.amount),0),se=exp.reduce((s,r)=>s+getAbs(r.amount),0);
+        cum+=(si-se);
+        const card=document.createElement('div');Object.assign(card.style,{background:'rgba(230,245,255,0.7)',borderRadius:'1rem',boxShadow:'0 2px 6px rgba(0,0,0,0.1)',padding:'1rem',width:'22%'});card.innerHTML=`
+          <h4 style="text-align:center;">${month}</h4><p>收入：<span class="red" style="font-weight:bold;">$${si.toLocaleString()}</span></p><p>支出：<span class="green" style="font-weight:bold;">$${se.toLocaleString()}</span></p><hr style="margin:0.5rem 0;"><div style="margin-top:0.5rem;font-weight:bold;">累積結餘：<span style="color:${cum>=0?'#f44336':'#007f0e'};">$${cum.toLocaleString()}</span></div>`;overview.appendChild(card);
+        let html=`<div class="month-box"><h3>${month}</h3><div class="month-details"><div class="month-column"><h4>💰 收入</h4><ul>`;
+        inc.forEach((r,i)=>{html+=`<li><span>${r.category}</span><span><span class="red" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','income',${i})">🗑️</button></span></li>`;});
+        html+=`</ul></div><div class="month-column"><h4>💸 支出</h4><ul class="exp-list">`;
+        exp.forEach((r,i)=>{
+          if(r.category==='卡費'&&r.details&&r.details.length){
+            html+=`<li class="expense-item-group"><div style="display:flex;align-items:center;"><span>卡費</span><button class="expand-btn icon-btn" onclick="toggleDetail(this)">▼</button></div><div class="card-detail-list"><ul>`;
+            r.details.forEach((d,di)=>{html+=`<li style="display:flex;align-items:center;"><span>${d.name}</span><span style="margin:0 0.5em;"><span class="green" style="font-weight:bold;">$${getAbs(d.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteCardDetail('${month}',${i},${di})">🗑️</button></span></li>`;});
+            html+=`</ul></div><div style="display:flex;align-items:center;"><span class="green" style="font-weight:bold;margin-left:auto;">$${getAbs(r.amount).toLocaleString()}&nbsp;</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${i})">🗑️</button></div></li>`;
           } else {
-            html += `<li><span>${r.category}</span><span><span class="green" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${idx})">🗑️</button></span></li>`;
+            html+=`<li><span>${r.category}</span><span><span class="green" style="font-weight:bold;">$${getAbs(r.amount).toLocaleString()}</span> <button class="delete-btn icon-btn" onclick="deleteRecordFromList('${month}','expense',${i})">🗑️</button></span></li>`;
           }
         });
-        html += `</ul></div></div><div class="month-totals"><div class="month-total red">收入總計：$${sumIncome.toLocaleString()}</div><div class="month-total green">支出總計：$${sumExpense.toLocaleString()}</div></div></div>`;
-        cont.insertAdjacentHTML('afterbegin', html);
+        html+=`</ul></div></div><div class="month-totals"><div class="month-total red">收入總計：$${si.toLocaleString()}</div><div class="month-total green">支出總計：$${se.toLocaleString()}</div></div></div>`;
+        cont.insertAdjacentHTML('afterbegin',html);
       });
     }
+    window.toggleDetail=btn=>{const d=btn.closest('.expense-item-group').querySelector('.card-detail-list');if(!d)return;d.classList.toggle('open');btn.textContent=d.classList.contains('open')?'▲':'▼';};
 
-    window.toggleDetail = btn => {
-      const d = btn.closest('.expense-item-group').querySelector('.card-detail-list');
-      if (!d) return; d.classList.toggle('open'); btn.textContent = d.classList.contains('open') ? '▲' : '▼';
-    };
+    // 僅在手機下啟用 FAB 功能
+    if(window.innerWidth<=600){
+      document.getElementById('fab-add').addEventListener('click',()=> {
+        document.querySelector('.form-section').scrollIntoView({behavior:'smooth'});
+      });
+      // Accordion bind
+      function bindAccordion(){
+        document.querySelectorAll('.month-box h3').forEach(h=>h.onclick=()=>h.parentNode.classList.toggle('open'));
+      }
+      const origUpdate=updateUI;
+      updateUI = function(){
+        origUpdate();
+        bindAccordion();
+      };
+      bindAccordion();
+    }
+
+    // 分頁切換
+    document.querySelectorAll('nav.owner-tabs button').forEach(btn=>btn.addEventListener('click',()=>{
+      document.querySelector('nav.owner-tabs button.active').classList.remove('active');
+      btn.classList.add('active');
+      window.currentOwner=btn.dataset.owner;
+      updateUI();
+    }));
   </script>
 </body>
 </html>

@@ -64,8 +64,8 @@
     /* 預設隱藏 FAB，桌機不會看到 */
     #fab-add { display:none; }
 
-    /* 手機專屬：螢幕 ≤600px 時才套用以下 */
-    @media (max-width:600px) {
+   /* 手機專屬：螢幕 ≤600px 時才套用以下 */
+@media (max-width:600px) {
   /* 隱藏小新動畫與對話框 */
   #shin-icon,
   #shin-dialog {
@@ -92,53 +92,85 @@
     border:none;
     box-shadow:0 4px 8px rgba(0,0,0,0.2);
     z-index:1001;
-      }
+  }
 
-      /* Accordion for 月份明細 */
-      .month-box .month-details,
-      .month-box .month-totals {
-        display:none;
-      }
-      .month-box.open .month-details,
-      .month-box.open .month-totals {
-        display:block;
-      }
+  /* Accordion for 月份明細 */
+  .month-box .month-details,
+  .month-box .month-totals {
+    display:none;
+  }
+  .month-box.open .month-details,
+  .month-box.open .month-totals {
+    display:block;
+  }
 
-      /* Sticky header for 切換與年份 */
-      nav.owner-tabs,
-      .year-switcher {
-        position:sticky;
-        top:0;
-        background:rgba(255,255,255,0.9);
-        z-index:500;
-      }
+  /* Sticky header for 切換與年份 */
+  nav.owner-tabs,
+  .year-switcher {
+    position:sticky;
+    top:0;
+    background:rgba(255,255,255,0.9);
+    z-index:500;
+  }
 
-      /* 卡片改成單欄排版 */
-      .summary .card,
-      #month-overview-cards > div {
-        width:90% !important;
-        margin:0.5rem auto;
-      }
-      .month-box { width:100% !important; }
+  /* 卡片改成單欄排版 */
+  .summary .card,
+  #month-overview-cards > div {
+    width:90% !important;
+    margin:0.5rem auto;
+  }
+  .month-box { width:100% !important; }
 
-      /* 表單直排 */
-      .form-section > div { flex-direction:column !important; }
-      .form-section input, .form-section select, .form-section button {
-        width:100% !important;
-      }
+  /* 表單調整為四行排版 */
+  .form-section > div {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.5rem;
+  }
 
-      /* 切換按鈕換行 */
-      .owner-tabs {
-        flex-wrap:wrap;
-        gap:0.5rem;
-      }
-      .owner-tabs button {
-        flex:1 1 30%;
-        font-size:0.9rem;
-      }
+  .form-section > div > :nth-child(1),
+  .form-section > div > :nth-child(2) {
+    width: 100% !important;
+    display: inline-block;
+  }
 
-      body { padding:0.5rem; }
-    }
+  .form-section > div .category-row,
+  .form-section > div .category-row button {
+    width: 100% !important;
+    display: inline-block;
+  }
+
+  .form-section > div > :nth-child(4),
+  .form-section > div > :nth-child(5) {
+    width: 100% !important;
+  }
+
+  .add-category-row,
+  #delete-category-row {
+    width: 100% !important;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .form-section input,
+  .form-section select,
+  .form-section button {
+    width:100% !important;
+  }
+
+  /* 切換按鈕換行 */
+  .owner-tabs {
+    flex-wrap:wrap;
+    gap:0.5rem;
+  }
+  .owner-tabs button {
+    flex:1 1 30%;
+    font-size:0.9rem;
+  }
+
+  body { padding:0.5rem; }
+}
   </style>
 </head>
 <body>

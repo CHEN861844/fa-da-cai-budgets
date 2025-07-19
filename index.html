@@ -66,21 +66,32 @@
 
     /* 手機專屬：螢幕 ≤600px 時才套用以下 */
     @media (max-width:600px) {
-      /* Floating Action Button */
-      #fab-add {
-        display:block;
-        position:fixed;
-        bottom:70px;
-        right:16px;
-        width:56px;
-        height:56px;
-        border-radius:50%;
-        background:#f44336;
-        color:#fff;
-        font-size:2rem;
-        border:none;
-        box-shadow:0 4px 8px rgba(0,0,0,0.2);
-        z-index:1001;
+  /* 隱藏小新動畫與對話框 */
+  #shin-icon,
+  #shin-dialog {
+    display: none !important;
+  }
+
+  /* 隱藏匯入匯出區塊 */
+  .import-export {
+    display: none !important;
+  }
+
+  /* Floating Action Button (維持原狀，僅供參考) */
+  #fab-add {
+    display:block;
+    position:fixed;
+    bottom:70px;
+    right:16px;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    background:#f44336;
+    color:#fff;
+    font-size:2rem;
+    border:none;
+    box-shadow:0 4px 8px rgba(0,0,0,0.2);
+    z-index:1001;
       }
 
       /* Accordion for 月份明細 */
